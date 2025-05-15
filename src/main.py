@@ -2,10 +2,10 @@ import os
 import nextcord
 from nextcord.ext import commands
 from dotenv import load_dotenv
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 # Charger les variables d'environnement
-load_dotenv()
+load_dotenv('.env')
 
 # Configuration du bot avec les intents
 intents = nextcord.Intents.default()
@@ -24,6 +24,10 @@ class VoiceCreatorConfig:
 # Dictionnaire pour stocker les configurations des créateurs de salons vocaux par serveur
 # Format: guild_id -> Dict[creator_channel_id, VoiceCreatorConfig]
 guild_configs: Dict[int, Dict[int, VoiceCreatorConfig]] = {}
+
+# Dictionnaire pour suivre les salons créés par le bot
+# Format: guild_id -> Set[channel_id]
+created_channels: Dict[int, Set[int]] = {}
 
 @bot.event
 async def on_ready():
@@ -168,24 +172,26 @@ async def on_voice_state_update(member, before, after):
                 except nextcord.HTTPException:
                     pass  # Ignorer les erreurs de position
             
+            # Ajouter le nouveau salon à la liste des salons créés
+            if guild_id not in created_channels:
+                created_channels[guild_id] = set()
+            created_channels[guild_id].add(new_channel.id)
+            
             # Déplacer le membre dans le nouveau salon
             await member.move_to(new_channel)
     
     # Nettoyer les salons vides
-    if before.channel is not None:
-        # Vérifier si le salon n'est pas un créateur et est vide
-        is_creator = any(
-            before.channel.id == config.channel_id
-            for configs in guild_configs.values()
-            for config in configs.values()
-        )
-        
+    if before.channel is not None and guild_id in created_channels:
+        # Vérifier si le salon a été créé par le bot et est vide
         if (
-            not is_creator and
-            len(before.channel.members) == 0 and
-            before.channel.category == after.channel.category
+            before.channel.id in created_channels[guild_id] and
+            len(before.channel.members) == 0
         ):
             await before.channel.delete()
+            created_channels[guild_id].remove(before.channel.id)
+            # Supprimer le set si c'était le dernier salon
+            if not created_channels[guild_id]:
+                del created_channels[guild_id]
 
 # Lancer le bot
 bot.run(os.getenv('DISCORD_TOKEN'))
