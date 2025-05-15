@@ -1,0 +1,52 @@
+{
+    "1372522794494984222": {
+        "1372546228256247839": {
+            "channel_id": 1372546228256247839,
+            "template_name": "Canal de $user - LVL 10+",
+            "position": "after",
+            "user_limit": 5
+        },
+        "1372546277807493120": {
+            "channel_id": 1372546277807493120,
+            "template_name": "Canal de $user - LVL 10+",
+            "position": "after",
+            "user_limit": 5
+        },
+        "1372546362721308782": {
+            "channel_id": 1372546362721308782,
+            "template_name": "Canal de $user - LVL 5-7",
+            "position": "after",
+            "user_limit": 5
+        },
+        "1372547107918971000": {
+            "channel_id": 1372547107918971000,
+            "template_name": "Canal de {user} - LVL 10+",
+            "position": "after",
+            "user_limit": 5
+        },
+        "1372547162193399838": {
+            "channel_id": 1372547162193399838,
+            "template_name": "Canal de {user} - LVL 7-9",
+            "position": "after",
+            "user_limit": 5
+        },
+        "1372547229595729921": {
+            "channel_id": 1372547229595729921,
+            "template_name": "Canal de {user} - LVL 5-7",
+            "position": "after",
+            "user_limit": 5
+        },
+        "1372547303512080445": {
+            "channel_id": 1372547303512080445,
+            "template_name": "Canal de {user} - LVL 1-5",
+            "position": "after",
+            "user_limit": 5
+        },
+        "1372547415600664707": {
+            "channel_id": 1372547415600664707,
+            "template_name": "Canal de {user} - LVL 1-5",
+            "position": "before",
+            "user_limit": 5
+        }
+    }
+}

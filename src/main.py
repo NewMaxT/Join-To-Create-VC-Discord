@@ -16,17 +16,19 @@ intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 class VoiceCreatorConfig:
-    def __init__(self, channel_id: int, template_name: str, position: Optional[int]):
+    def __init__(self, channel_id: int, template_name: str, position: str = "after", user_limit: int = 0):
         self.channel_id = channel_id
         self.template_name = template_name
-        self.position = position
+        self.position = position  # "before" ou "after"
+        self.user_limit = user_limit
     
     def to_dict(self) -> dict:
         """Convertit la configuration en dictionnaire pour la sauvegarde JSON"""
         return {
             'channel_id': self.channel_id,
             'template_name': self.template_name,
-            'position': self.position
+            'position': self.position,
+            'user_limit': self.user_limit
         }
     
     @classmethod
@@ -35,7 +37,8 @@ class VoiceCreatorConfig:
         return cls(
             channel_id=data['channel_id'],
             template_name=data['template_name'],
-            position=data['position']
+            position=data.get('position', 'after'),
+            user_limit=data.get('user_limit', 0)
         )
 
 # Dictionnaire pour stocker les configurations des créateurs de salons vocaux par serveur
@@ -118,16 +121,18 @@ async def on_ready():
 async def setupvoice(
     ctx, 
     template_name: str = "Salon de {user}",
-    position: str = "below",
-    creator_name: str = "➕ Rejoindre pour Créer"
+    position: str = "after",
+    creator_name: str = "➕ Rejoindre pour Créer",
+    user_limit: int = 0
 ):
     """
     Crée un salon vocal créateur avec des paramètres personnalisés
     
     Paramètres:
     - template_name: Le modèle pour les noms des nouveaux salons. Utilisez {user} pour le nom de l'utilisateur
-    - position: Où placer les nouveaux salons ('above' = au-dessus ou 'below' = en-dessous)
+    - position: Où placer les nouveaux salons ('before' = avant ou 'after' = après)
     - creator_name: Le nom du salon créateur (par défaut: "➕ Rejoindre pour Créer")
+    - user_limit: Limite du nombre d'utilisateurs (0 = illimité)
     """
     guild = ctx.guild
     current_category = ctx.channel.category
@@ -142,6 +147,16 @@ async def setupvoice(
         await ctx.send("Le nom du salon créateur doit contenir entre 1 et 100 caractères !")
         return
 
+    # Valider la position
+    if position not in ["before", "after"]:
+        await ctx.send("La position doit être 'before' (avant) ou 'after' (après) !")
+        return
+
+    # Valider la limite d'utilisateurs
+    if user_limit < 0 or user_limit > 99:
+        await ctx.send("La limite d'utilisateurs doit être entre 0 et 99 (0 = illimité) !")
+        return
+
     # Créer le salon vocal créateur
     create_channel = await guild.create_voice_channel(
         name=creator_name,
@@ -151,34 +166,31 @@ async def setupvoice(
     # Initialiser la configuration du serveur si elle n'existe pas
     if guild.id not in guild_configs:
         guild_configs[guild.id] = {}
-
-    # Stocker la configuration
-    position_value = None
-    if position == "above":
-        position_value = create_channel.position - 1
-    elif position == "below":
-        position_value = create_channel.position + 1
     
     guild_configs[guild.id][create_channel.id] = VoiceCreatorConfig(
         channel_id=create_channel.id,
         template_name=template_name,
-        position=position_value
+        position=position,
+        user_limit=user_limit
     )
 
     # Sauvegarder les configurations
     save_configs()
 
     location_msg = (
-        "au-dessus du salon créateur" if position == "above"
-        else "en-dessous du salon créateur"
+        "avant le salon créateur" if position == "before"
+        else "après le salon créateur"
     )
+    
+    limit_msg = "illimité" if user_limit == 0 else str(user_limit)
     
     await ctx.send(
         f"Le créateur de salon vocal a été configuré !\n"
         f"- Nom du salon créateur : `{creator_name}`\n"
         f"- Rejoignez {create_channel.mention} pour créer un nouveau salon\n"
         f"- Les nouveaux salons seront créés {location_msg}\n"
-        f"- Modèle de nom : `{template_name}`"
+        f"- Modèle de nom : `{template_name}`\n"
+        f"- Limite d'utilisateurs : {limit_msg}"
     )
 
 @bot.command()
@@ -211,7 +223,7 @@ async def listvoice(ctx):
             creators.append(
                 f"Salon : {channel.mention}\n"
                 f"Modèle : `{config.template_name}`\n"
-                f"Position : {'position personnalisée' if config.position else 'ordre de la catégorie'}\n"
+                f"Position : {config.position if config.position is not None else 'Par defaut'}\n"
             )
 
     if creators:
@@ -238,15 +250,18 @@ async def on_voice_state_update(member, before, after):
             # Créer le nouveau salon dans la même catégorie que le créateur
             new_channel = await member.guild.create_voice_channel(
                 name=channel_name,
-                category=after.channel.category
+                category=after.channel.category,
+                user_limit=config.user_limit
             )
 
-            # Définir la position si spécifiée
-            if config.position is not None:
-                try:
-                    await new_channel.edit(position=config.position)
-                except nextcord.HTTPException:
-                    pass  # Ignorer les erreurs de position
+            # Positionner le salon relativement au créateur
+            try:
+                if config.position == "before":
+                    await new_channel.move(before=after.channel, sync_permissions=True)
+                else:  # after
+                    await new_channel.move(after=after.channel, sync_permissions=True)
+            except nextcord.HTTPException:
+                pass  # Ignorer les erreurs de position
             
             # Ajouter le nouveau salon à la liste des salons créés
             if guild_id not in created_channels:
@@ -268,6 +283,96 @@ async def on_voice_state_update(member, before, after):
             # Supprimer le set si c'était le dernier salon
             if not created_channels[guild_id]:
                 del created_channels[guild_id]
+
+@bot.remove_command('help')  # Retire la commande help par défaut
+
+@bot.command()
+async def help(ctx):
+    """Affiche l'aide du bot"""
+    embed = nextcord.Embed(
+        title="📢 Aide",
+        description="Ce bot permet de créer automatiquement des salons vocaux temporaires.",
+        color=0x00ff00
+    )
+
+    # Commande setupvoice
+    embed.add_field(
+        name="!setupvoice [modele_nom] [position] [nom_createur] [limite_users]",
+        value=(
+            "Crée un nouveau salon créateur de vocaux.\n"
+            "```\n"
+            "Arguments :\n"
+            "- modele_nom : Modèle du nom (défaut: 'Salon de {user}')\n"
+            "- position : 'before' ou 'after' (défaut: 'after')\n"
+            "- nom_createur : Nom du salon créateur\n"
+            "- limite_users : Limite d'utilisateurs (0-99, 0 = illimité)\n"
+            "\n"
+            "Exemples :\n"
+            "!setupvoice\n"
+            "!setupvoice \"Gaming avec {user}\"\n"
+            "!setupvoice \"Salon de {user}\" before\n"
+            "!setupvoice \"Salon de {user}\" after \"🎮 Créer\" 5\n"
+            "```"
+        ),
+        inline=False
+    )
+
+    # Commande removevoice
+    embed.add_field(
+        name="!removevoice <salon>",
+        value=(
+            "Supprime un salon créateur.\n"
+            "```\n"
+            "Argument :\n"
+            "- salon : Mention ou ID du salon à supprimer\n"
+            "\n"
+            "Exemple :\n"
+            "!removevoice #rejoindre-pour-creer\n"
+            "```"
+        ),
+        inline=False
+    )
+
+    # Commande listvoice
+    embed.add_field(
+        name="!listvoice",
+        value=(
+            "Liste tous les salons créateurs du serveur.\n"
+            "```\n"
+            "Affiche pour chaque salon :\n"
+            "- Nom et lien du salon\n"
+            "- Modèle de nom utilisé\n"
+            "- Position des nouveaux salons\n"
+            "```"
+        ),
+        inline=False
+    )
+
+    # Commande help
+    embed.add_field(
+        name="!help",
+        value="Affiche ce message d'aide.",
+        inline=False
+    )
+
+    # Notes importantes
+    embed.add_field(
+        name="📝 Notes importantes",
+        value=(
+            "• Les salons sont créés dans la même catégorie que le créateur\n"
+            "• La variable {user} est remplacée par le nom du membre\n"
+            "• Les salons vides sont automatiquement supprimés\n"
+            "• Seuls les administrateurs peuvent utiliser les commandes\n"
+            "• Les configurations sont sauvegardées automatiquement\n"
+            "• La limite d'utilisateurs s'applique aux nouveaux salons"
+        ),
+        inline=False
+    )
+
+    # Footer avec version
+    embed.set_footer(text="Bot Salons Vocaux Automatiques • v1.0")
+
+    await ctx.send(embed=embed)
 
 # Lancer le bot
 bot.run(os.getenv('DISCORD_TOKEN'))
