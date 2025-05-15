@@ -4,11 +4,12 @@ Ce bot Discord crée automatiquement de nouveaux salons vocaux lorsque les utili
 
 ## Fonctionnalités
 
-- Création de plusieurs créateurs de salons vocaux dans différentes catégories
+- Création de plusieurs créateurs de salons vocaux
 - Modèles de noms de salons personnalisables avec variables
-- Options flexibles de placement des salons (au-dessus/en-dessous du créateur ou dans une catégorie spécifique)
+- Options de placement des salons (au-dessus/en-dessous du créateur)
 - Nettoyage automatique des salons vides
 - Support pour plusieurs serveurs
+- Sauvegarde automatique des configurations
 - Commandes de gestion faciles à utiliser
 
 ## Installation
@@ -32,17 +33,18 @@ python src/main.py
 
 Toutes les commandes nécessitent les permissions d'administrateur :
 
-### !setupvoice [modele_nom] [categorie] [position]
+### !setupvoice [modele_nom] [position] [nom_createur]
 Crée un nouveau créateur de salon vocal avec des paramètres personnalisés
 - `modele_nom` : Modèle pour les noms des nouveaux salons (par défaut : "Salon de {user}")
-- `categorie` : Catégorie optionnelle pour placer les nouveaux salons
-- `position` : Où placer les nouveaux salons ('above' = au-dessus, 'below' = en-dessous, ou 'category' = dans la catégorie, par défaut : 'below')
+- `position` : Où placer les nouveaux salons ('above' = au-dessus ou 'below' = en-dessous, par défaut : 'below')
+- `nom_createur` : Le nom du salon créateur (par défaut : "➕ Rejoindre pour Créer")
 
 Exemples :
 ```
-!setupvoice                                    # Configuration basique avec valeurs par défaut
-!setupvoice "Gaming avec {user}"               # Modèle de nom personnalisé
-!setupvoice "Salon de {user}" #Gaming above    # Catégorie et position personnalisées
+!setupvoice                                    # Configuration basique
+!setupvoice "Gaming avec {user}"               # Nom personnalisé
+!setupvoice "Salon de {user}" above           # Position personnalisée
+!setupvoice "Salon de {user}" below "🎮 Créer" # Tout personnalisé
 ```
 
 ### !removevoice <salon>
@@ -71,4 +73,6 @@ Le bot nécessite les permissions suivantes :
 - Seuls les administrateurs du serveur peuvent gérer les créateurs de salons vocaux
 - Les modèles de noms de salons prennent en charge la variable {user} qui est remplacée par le nom d'affichage de l'utilisateur
 - Les salons créés sont automatiquement supprimés lorsqu'ils sont vides
-- Vous pouvez avoir plusieurs salons créateurs avec des paramètres différents dans le même serveur
+- Les nouveaux salons sont toujours créés dans la même catégorie que leur salon créateur
+- Les configurations sont sauvegardées automatiquement et persistent après le redémarrage du bot
+- Vous pouvez avoir plusieurs salons créateurs dans le même serveur
