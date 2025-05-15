@@ -1,3 +1,6 @@
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://www.heroku.com/deploy?template=https://github.com/NewMaxT/Automated-Voice-Channel-Creator)
+
+
 Ce bot Discord crée automatiquement de nouveaux salons vocaux lorsque les utilisateurs rejoignent des salons "créateurs" désignés. Lorsque les utilisateurs quittent les salons créés, ils sont automatiquement supprimés.
 
 ## Fonctionnalités
@@ -78,3 +81,4 @@ Le bot nécessite les permissions suivantes :
 - Les nouveaux salons peuvent être positionnés avant ou après leur créateur
 - Les configurations sont sauvegardées automatiquement et persistent après le redémarrage du bot
 - Vous pouvez avoir plusieurs salons créateurs dans le même serveur
+- For Heroku deployments, use the button above and read their [T.O.S](https://www.heroku.com/policy/heroku-elements-terms/)
