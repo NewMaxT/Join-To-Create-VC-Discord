@@ -370,7 +370,7 @@ async def help(ctx):
     )
 
     # Footer avec version
-    embed.set_footer(text="Bot Salons Vocaux Automatiques • v1.0")
+    embed.set_footer(text="Made by Maxence G. • v1.1")
 
     await ctx.send(embed=embed)
 
