@@ -1,15 +1,12 @@
-# Bot Discord de Salons Vocaux Automatiques
-
 Ce bot Discord crée automatiquement de nouveaux salons vocaux lorsque les utilisateurs rejoignent des salons "créateurs" désignés. Lorsque les utilisateurs quittent les salons créés, ils sont automatiquement supprimés.
 
 ## Fonctionnalités
 
 - Création de plusieurs créateurs de salons vocaux
-- Modèles de noms de salons personnalisables avec variables
+- Noms de salons personnalisables
 - Positionnement relatif des nouveaux salons (avant/après le créateur)
 - Nettoyage automatique des salons vides
-- Support pour plusieurs serveurs
-- Sauvegarde automatique des configurations
+- Sauvegarde automatique des configurations (en cas de crash ou reboot)
 - Commandes de gestion faciles à utiliser
 
 ## Installation
