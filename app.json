@@ -3,4 +3,10 @@
   "description": "Discord bot that automatically creates new voice channels when users join designated channels.",
   "repository": "https://github.com/NewMaxT/Automated-Voice-Channel-Creator",
   "keywords": ["python", "discord", "worker"]
+
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ]
 }
