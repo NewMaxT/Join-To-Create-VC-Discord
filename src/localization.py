@@ -122,6 +122,9 @@ LOCALES = {
                 'set_success': 'Language has been set to English!',
                 'invalid': 'Invalid language! Available languages: {langs}'
             }
+        },
+        'errors': {
+            'missing_permissions': '❌ You need administrator permissions to use this command!'
         }
     },
     'fr': {
@@ -245,6 +248,9 @@ LOCALES = {
                 'set_success': 'La langue a été définie sur Français !',
                 'invalid': 'Langue invalide ! Langues disponibles : {langs}'
             }
+        },
+        'errors': {
+            'missing_permissions': '❌ Vous avez besoin des permissions d\'administrateur pour utiliser cette commande !'
         }
     }
 }

@@ -426,8 +426,9 @@ async def on_voice_state_update(member, before, after):
 @bot.remove_command('help')  # Remove default help command
 
 @bot.command()
+@commands.has_permissions(administrator=True)
 async def help(ctx):
-    """Display bot help"""
+    """Display bot help (Admin only)"""
     embed = nextcord.Embed(
         title=loc.get_text(ctx.guild.id, 'help.title'),
         description=loc.get_text(ctx.guild.id, 'help.description'),
@@ -480,6 +481,31 @@ async def help(ctx):
     embed.set_footer(text=loc.get_text(ctx.guild.id, 'help.footer'))
 
     await ctx.send(embed=embed)
+
+# Add error handler for missing permissions
+@help.error
+@setupvoice.error
+@removevoice.error
+@listvoice.error
+@config_group.error
+async def command_error(ctx, error):
+    """Handle permission errors for commands"""
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send(loc.get_text(ctx.guild.id, 'errors.missing_permissions'))
+    else:
+        # Log other errors
+        print(f"Error in {ctx.command}: {error}")
+
+@bot.event
+async def on_command_error(ctx, error):
+    """Global error handler for uncaught command errors"""
+    if isinstance(error, commands.CommandNotFound):
+        return  # Ignore command not found errors
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send(loc.get_text(ctx.guild.id, 'errors.missing_permissions'))
+    else:
+        # Log other errors
+        print(f"Uncaught error in {ctx.command}: {error}")
 
 # Lancer le bot
 bot.run(os.getenv('DISCORD_TOKEN'))
