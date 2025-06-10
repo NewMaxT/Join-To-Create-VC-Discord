@@ -1,9 +1,12 @@
 import os
 import json
 import nextcord
-from nextcord.ext import commands
+from nextcord.ext import commands, tasks
 from dotenv import load_dotenv
 from typing import Dict, Optional, Set
+from localization import Localization
+from config import ServerConfig
+import asyncio
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -12,8 +15,13 @@ load_dotenv()
 intents = nextcord.Intents.default()
 intents.voice_states = True
 intents.message_content = True
+intents.members = True  # Required for autorole
 
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+# Initialize localization and server config
+loc = Localization()
+server_config = ServerConfig()
 
 class VoiceCreatorConfig:
     def __init__(self, channel_id: int, template_name: str, position: str = "after", user_limit: int = 0):
@@ -87,6 +95,9 @@ async def on_ready():
     print(f'Bot prêt ! Connecté en tant que {bot.user.name}')
     # Charger les configurations au démarrage
     load_configs()
+    server_config.load_config()
+    # Start background tasks
+    check_role_expiry.start()
     
     # Vérifier que les salons créateurs existent toujours
     invalid_configs = []
@@ -116,54 +127,179 @@ async def on_ready():
     # Sauvegarder les configurations nettoyées
     save_configs()
 
+@tasks.loop(hours=1)
+async def check_role_expiry():
+    """Check and remove expired roles"""
+    expired_roles = server_config.get_expired_roles()
+    
+    for guild_id, member_ids in expired_roles.items():
+        guild = bot.get_guild(guild_id)
+        if not guild:
+            continue
+            
+        config = server_config.get_autorole(guild_id)
+        if not config:
+            continue
+            
+        role = guild.get_role(config['role_id'])
+        if not role:
+            continue
+            
+        for member_id in member_ids:
+            member = guild.get_member(member_id)
+            if member and role in member.roles:
+                try:
+                    await member.remove_roles(role)
+                except nextcord.HTTPException:
+                    pass
+
+@bot.event
+async def on_member_join(member):
+    """Handle new member joins"""
+    guild_id = member.guild.id
+    config = server_config.get_autorole(guild_id)
+    
+    if config:
+        # Check if we should skip rejoining members
+        if config['check_rejoin'] and server_config.has_member_joined_before(guild_id, member.id):
+            return
+            
+        role = member.guild.get_role(config['role_id'])
+        if role:
+            try:
+                await member.add_roles(role)
+                server_config.add_joined_member(guild_id, member.id)
+            except nextcord.HTTPException:
+                pass
+
+@bot.event
+async def on_message(message):
+    """Handle messages and sticky messages"""
+    if message.author.bot:
+        return
+        
+    # Process sticky messages
+    guild_id = message.guild.id if message.guild else None
+    channel_id = message.channel.id if message.channel else None
+    
+    if guild_id and channel_id:
+        sticky_config = server_config.get_sticky_message(guild_id, channel_id)
+        if sticky_config:
+            # Delete all previous sticky messages from the bot
+            try:
+                # Fetch last 50 messages to find and delete old sticky messages
+                async for old_message in message.channel.history(limit=50):
+                    if (old_message.author == bot.user and 
+                        old_message.content == sticky_config['content']):
+                        try:
+                            await old_message.delete()
+                        except nextcord.HTTPException:
+                            pass
+            except nextcord.HTTPException:
+                pass
+            
+            # Wait a short time to let other messages appear
+            await asyncio.sleep(0.5)
+            
+            # Send new sticky message
+            new_message = await message.channel.send(sticky_config['content'])
+            server_config.update_sticky_message_id(guild_id, channel_id, new_message.id)
+    
+    await bot.process_commands(message)
+
+@bot.group(name='config')
+@commands.has_permissions(administrator=True)
+async def config_group(ctx):
+    """Configuration commands group"""
+    if ctx.invoked_subcommand is None:
+        await ctx.send(loc.get_text(ctx.guild.id, 'help.title'))
+
+@config_group.command(name='language')
+async def set_language(ctx, language: str):
+    """Set the bot's language for this server"""
+    if loc.set_language(ctx.guild.id, language):
+        await ctx.send(loc.get_text(ctx.guild.id, 'config.language.set_success'))
+    else:
+        await ctx.send(loc.get_text(ctx.guild.id, 'config.language.invalid', 
+                                  langs=', '.join(loc.get_available_languages())))
+
+@config_group.command(name='autorole')
+async def set_autorole(ctx, role: nextcord.Role, expiry_minutes: Optional[int] = None, check_rejoin: bool = False):
+    """Configure auto-role for new members"""
+    # Validate expiry_minutes if provided
+    if expiry_minutes is not None and expiry_minutes <= 0:
+        await ctx.send("Expiry time must be greater than 0 minutes!")
+        return
+        
+    server_config.set_autorole(ctx.guild.id, role.id, expiry_minutes, check_rejoin)
+    
+    # Send confirmation message
+    await ctx.send(loc.get_text(ctx.guild.id, 'config.autorole.set_success', role=role.mention))
+    
+    if expiry_minutes:
+        await ctx.send(loc.get_text(ctx.guild.id, 'config.autorole.expiry_set', minutes=expiry_minutes))
+    
+    if check_rejoin:
+        await ctx.send(loc.get_text(ctx.guild.id, 'config.autorole.rejoin_enabled'))
+
+@config_group.command(name='remove_autorole')
+async def remove_autorole(ctx):
+    """Remove auto-role configuration"""
+    server_config.remove_autorole(ctx.guild.id)
+    await ctx.send(loc.get_text(ctx.guild.id, 'config.autorole.remove_success'))
+
+@config_group.command(name='sticky')
+async def set_sticky(ctx, channel: nextcord.TextChannel, *, content: str):
+    """Set a sticky message in a channel"""
+    server_config.set_sticky_message(ctx.guild.id, channel.id, content)
+    await ctx.send(loc.get_text(ctx.guild.id, 'config.sticky.set_success', channel=channel.mention))
+
+@config_group.command(name='remove_sticky')
+async def remove_sticky(ctx, channel: nextcord.TextChannel):
+    """Remove sticky message from a channel"""
+    server_config.remove_sticky_message(ctx.guild.id, channel.id)
+    await ctx.send(loc.get_text(ctx.guild.id, 'config.sticky.remove_success', channel=channel.mention))
+
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setupvoice(
     ctx, 
-    template_name: str = "Salon de {user}",
+    template_name: str = "Channel of {user}",
     position: str = "after",
-    creator_name: str = "➕ Rejoindre pour Créer",
+    creator_name: str = "➕ Join to Create",
     user_limit: int = 0
 ):
-    """
-    Crée un salon vocal créateur avec des paramètres personnalisés
-    
-    Paramètres:
-    - template_name: Le modèle pour les noms des nouveaux salons. Utilisez {user} pour le nom de l'utilisateur
-    - position: Où placer les nouveaux salons ('before' = avant ou 'after' = après)
-    - creator_name: Le nom du salon créateur (par défaut: "➕ Rejoindre pour Créer")
-    - user_limit: Limite du nombre d'utilisateurs (0 = illimité)
-    """
+    """Creates a voice channel creator with custom parameters"""
     guild = ctx.guild
     current_category = ctx.channel.category
 
-    # Valider le nom du modèle
+    # Validate template name
     if not template_name or len(template_name) > 100:
-        await ctx.send("Le nom du modèle doit contenir entre 1 et 100 caractères !")
+        await ctx.send("The template name must be between 1 and 100 characters!")
         return
 
-    # Valider le nom du créateur
+    # Validate creator name
     if not creator_name or len(creator_name) > 100:
-        await ctx.send("Le nom du salon créateur doit contenir entre 1 et 100 caractères !")
+        await ctx.send("The creator channel name must be between 1 and 100 characters!")
         return
 
-    # Valider la position
+    # Validate position
     if position not in ["before", "after"]:
-        await ctx.send("La position doit être 'before' (avant) ou 'after' (après) !")
+        await ctx.send("Position must be 'before' or 'after'!")
         return
 
-    # Valider la limite d'utilisateurs
+    # Validate user limit
     if user_limit < 0 or user_limit > 99:
-        await ctx.send("La limite d'utilisateurs doit être entre 0 et 99 (0 = illimité) !")
+        await ctx.send("User limit must be between 0 and 99 (0 = unlimited)!")
         return
 
-    # Créer le salon vocal créateur
+    # Create voice channel creator
     create_channel = await guild.create_voice_channel(
         name=creator_name,
         category=current_category
     )
 
-    # Initialiser la configuration du serveur si elle n'existe pas
+    # Initialize guild config if it doesn't exist
     if guild.id not in guild_configs:
         guild_configs[guild.id] = {}
     
@@ -174,65 +310,68 @@ async def setupvoice(
         user_limit=user_limit
     )
 
-    # Sauvegarder les configurations
+    # Save configurations
     save_configs()
 
-    location_msg = (
-        "avant le salon créateur" if position == "before"
-        else "après le salon créateur"
-    )
+    location = loc.get_text(ctx.guild.id, 'commands.location_before' if position == "before" else 'commands.location_after')
+    limit = loc.get_text(ctx.guild.id, 'commands.limit_unlimited') if user_limit == 0 else str(user_limit)
     
-    limit_msg = "illimité" if user_limit == 0 else str(user_limit)
-    
-    await ctx.send(
-        f"Le créateur de salon vocal a été configuré !\n"
-        f"- Nom du salon créateur : `{creator_name}`\n"
-        f"- Rejoignez {create_channel.mention} pour créer un nouveau salon\n"
-        f"- Les nouveaux salons seront créés {location_msg}\n"
-        f"- Modèle de nom : `{template_name}`\n"
-        f"- Limite d'utilisateurs : {limit_msg}"
-    )
+    await ctx.send(loc.get_text(
+        ctx.guild.id,
+        'commands.setup_success',
+        creator_name=creator_name,
+        channel=create_channel.mention,
+        location=location,
+        template=template_name,
+        limit=limit
+    ))
 
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def removevoice(ctx, channel: nextcord.VoiceChannel):
-    """Supprime un créateur de salon vocal"""
+    """Removes a voice channel creator"""
     if channel.id in guild_configs.get(ctx.guild.id, {}):
         await channel.delete()
         del guild_configs[ctx.guild.id][channel.id]
         if not guild_configs[ctx.guild.id]:
             del guild_configs[ctx.guild.id]
-        # Sauvegarder les configurations
+        # Save configurations
         save_configs()
-        await ctx.send(f"Le créateur de salon vocal a été supprimé !")
+        await ctx.send(loc.get_text(ctx.guild.id, 'commands.remove_success'))
     else:
-        await ctx.send("Ce salon n'est pas un créateur de salon vocal !")
+        await ctx.send(loc.get_text(ctx.guild.id, 'commands.remove_error'))
 
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def listvoice(ctx):
-    """Liste tous les créateurs de salons vocaux du serveur"""
+    """Lists all voice channel creators on the server"""
     if ctx.guild.id not in guild_configs or not guild_configs[ctx.guild.id]:
-        await ctx.send("Aucun créateur de salon vocal configuré sur ce serveur !")
+        await ctx.send(loc.get_text(ctx.guild.id, 'commands.list_none'))
         return
 
     creators = []
     for creator_id, config in guild_configs[ctx.guild.id].items():
         channel = ctx.guild.get_channel(creator_id)
         if channel:
-            creators.append(
-                f"Salon : {channel.mention}\n"
-                f"Modèle : `{config.template_name}`\n"
-                f"Position : {config.position if config.position is not None else 'Par defaut'}\n"
-            )
+            position = config.position if config.position is not None else loc.get_text(ctx.guild.id, 'commands.default_position')
+            creators.append(loc.get_text(
+                ctx.guild.id,
+                'commands.list_creator_info',
+                channel=channel.mention,
+                template=config.template_name,
+                position=position
+            ))
 
     if creators:
-        embed = nextcord.Embed(title="Créateurs de Salons Vocaux", color=0x00ff00)
+        embed = nextcord.Embed(
+            title=loc.get_text(ctx.guild.id, 'commands.list_creators'),
+            color=0x00ff00
+        )
         for i, creator in enumerate(creators, 1):
-            embed.add_field(name=f"Créateur {i}", value=creator, inline=False)
+            embed.add_field(name=f"Creator {i}", value=creator, inline=False)
         await ctx.send(embed=embed)
     else:
-        await ctx.send("Aucun créateur de salon vocal actif trouvé !")
+        await ctx.send(loc.get_text(ctx.guild.id, 'commands.list_none_active'))
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -284,95 +423,89 @@ async def on_voice_state_update(member, before, after):
             if not created_channels[guild_id]:
                 del created_channels[guild_id]
 
-@bot.remove_command('help')  # Retire la commande help par défaut
+@bot.remove_command('help')  # Remove default help command
 
 @bot.command()
+@commands.has_permissions(administrator=True)
 async def help(ctx):
-    """Affiche l'aide du bot"""
+    """Display bot help (Admin only)"""
     embed = nextcord.Embed(
-        title="📢 Aide",
-        description="Ce bot permet de créer automatiquement des salons vocaux temporaires.",
+        title=loc.get_text(ctx.guild.id, 'help.title'),
+        description=loc.get_text(ctx.guild.id, 'help.description'),
         color=0x00ff00
     )
 
-    # Commande setupvoice
+    # setupvoice command
     embed.add_field(
-        name="!setupvoice [modele_nom] [position] [nom_createur] [limite_users]",
-        value=(
-            "Crée un nouveau salon créateur de vocaux.\n"
-            "```\n"
-            "Arguments :\n"
-            "- modele_nom : Modèle du nom (défaut: 'Salon de {user}')\n"
-            "- position : 'before' ou 'after' (défaut: 'after')\n"
-            "- nom_createur : Nom du salon créateur\n"
-            "- limite_users : Limite d'utilisateurs (0-99, 0 = illimité)\n"
-            "\n"
-            "Exemples :\n"
-            "!setupvoice\n"
-            "!setupvoice \"Gaming avec {user}\"\n"
-            "!setupvoice \"Salon de {user}\" before\n"
-            "!setupvoice \"Salon de {user}\" after \"🎮 Créer\" 5\n"
-            "```"
-        ),
+        name=loc.get_text(ctx.guild.id, 'help.setup_title'),
+        value=loc.get_text(ctx.guild.id, 'help.setup_desc'),
         inline=False
     )
 
-    # Commande removevoice
+    # removevoice command
     embed.add_field(
-        name="!removevoice <salon>",
-        value=(
-            "Supprime un salon créateur.\n"
-            "```\n"
-            "Argument :\n"
-            "- salon : Mention ou ID du salon à supprimer\n"
-            "\n"
-            "Exemple :\n"
-            "!removevoice #rejoindre-pour-creer\n"
-            "```"
-        ),
+        name=loc.get_text(ctx.guild.id, 'help.remove_title'),
+        value=loc.get_text(ctx.guild.id, 'help.remove_desc'),
         inline=False
     )
 
-    # Commande listvoice
+    # listvoice command
     embed.add_field(
-        name="!listvoice",
-        value=(
-            "Liste tous les salons créateurs du serveur.\n"
-            "```\n"
-            "Affiche pour chaque salon :\n"
-            "- Nom et lien du salon\n"
-            "- Modèle de nom utilisé\n"
-            "- Position des nouveaux salons\n"
-            "```"
-        ),
+        name=loc.get_text(ctx.guild.id, 'help.list_title'),
+        value=loc.get_text(ctx.guild.id, 'help.list_desc'),
         inline=False
     )
 
-    # Commande help
+    # Configuration commands
     embed.add_field(
-        name="!help",
-        value="Affiche ce message d'aide.",
+        name=loc.get_text(ctx.guild.id, 'help.config_title'),
+        value=loc.get_text(ctx.guild.id, 'help.config_desc'),
         inline=False
     )
 
-    # Notes importantes
+    # help command
     embed.add_field(
-        name="📝 Notes importantes",
-        value=(
-            "• Les salons sont créés dans la même catégorie que le créateur\n"
-            "• La variable {user} est remplacée par le nom du membre\n"
-            "• Les salons vides sont automatiquement supprimés\n"
-            "• Seuls les administrateurs peuvent utiliser les commandes\n"
-            "• Les configurations sont sauvegardées automatiquement\n"
-            "• La limite d'utilisateurs s'applique aux nouveaux salons"
-        ),
+        name=loc.get_text(ctx.guild.id, 'help.help_title'),
+        value=loc.get_text(ctx.guild.id, 'help.help_desc'),
         inline=False
     )
 
-    # Footer avec version
-    embed.set_footer(text="Made by Maxence G. • v1.1")
+    # Important notes
+    embed.add_field(
+        name=loc.get_text(ctx.guild.id, 'help.notes_title'),
+        value=loc.get_text(ctx.guild.id, 'help.notes_desc'),
+        inline=False
+    )
+
+    # Footer with version
+    embed.set_footer(text=loc.get_text(ctx.guild.id, 'help.footer'))
 
     await ctx.send(embed=embed)
+
+# Add error handler for missing permissions
+@help.error
+@setupvoice.error
+@removevoice.error
+@listvoice.error
+@config_group.error
+async def command_error(ctx, error):
+    """Handle permission errors for commands"""
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send(loc.get_text(ctx.guild.id, 'errors.missing_permissions'))
+    else:
+        # Log other errors
+        print(f"Error in {ctx.command}: {error}")
+
+@bot.event
+async def on_command_error(ctx, error):
+    """Global error handler for uncaught command errors"""
+    if isinstance(error, commands.CommandNotFound):
+        return  # Ignore command not found errors
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send(loc.get_text(ctx.guild.id, 'errors.missing_permissions'))
+    else:
+        # Log other errors
+        print(f"Uncaught error in {ctx.command}: {error}")
 
 # Lancer le bot
 bot.run(os.getenv('DISCORD_TOKEN'))
