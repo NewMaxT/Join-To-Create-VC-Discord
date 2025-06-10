@@ -19,7 +19,6 @@ intents.message_content = True
 intents.members = True  # Required for autorole
 
 activity = Activity(type=ActivityType.playing, name="Fully Open-Source")
-
 bot = commands.Bot(command_prefix='!', intents=intents, activity=activity)
 
 # Initialize localization and server config
