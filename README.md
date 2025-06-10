@@ -1,84 +1,119 @@
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://www.heroku.com/deploy?template=https://github.com/NewMaxT/Automated-Voice-Channel-Creator)
 
+# Automated Voice Channel Creator
 
-Ce bot Discord crée automatiquement de nouveaux salons vocaux lorsque les utilisateurs rejoignent des salons "créateurs" désignés. Lorsque les utilisateurs quittent les salons créés, ils sont automatiquement supprimés.
+This Discord bot automatically creates new voice channels when users join designated "creator" channels. When users leave the created channels, they are automatically deleted.
 
-## Fonctionnalités
+## Features
 
-- Création de plusieurs créateurs de salons vocaux
-- Noms de salons personnalisables
-- Positionnement relatif des nouveaux salons (avant/après le créateur)
-- Nettoyage automatique des salons vides
-- Sauvegarde automatique des configurations (en cas de crash ou reboot)
-- Commandes de gestion faciles à utiliser
+- Multiple voice channel creators
+- Customizable channel names
+- Relative positioning of new channels (before/after the creator)
+- Automatic cleanup of empty channels
+- Automatic configuration saving (in case of crash or reboot)
+- Easy-to-use management commands
+- Auto-role system for new members (optional)
+- Sticky messages in text channels (optional)
+- Multi-language support (English/French)
 
 ## Installation
 
-1. Installez les dépendances requises :
+1. Install required dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Créez un fichier `.env` dans le répertoire racine avec votre token de bot Discord :
+2. Create a `.env` file in the root directory with your Discord bot token:
 ```
-DISCORD_TOKEN=votre_token_de_bot_ici
+DISCORD_TOKEN=your_bot_token_here
 ```
 
-3. Lancez le bot :
+3. Run the bot:
 ```bash
 python src/main.py
 ```
 
-## Commandes
+## Commands
 
-Toutes les commandes nécessitent les permissions d'administrateur :
+All commands require administrator permissions:
 
-### !setupvoice [modele_nom] [position] [nom_createur] [limite_users]
-Crée un nouveau créateur de salon vocal avec des paramètres personnalisés
-- `modele_nom` : Modèle pour les noms des nouveaux salons (par défaut : "Salon de {user}")
-- `position` : Où placer les nouveaux salons ('before' = avant ou 'after' = après, par défaut : 'after')
-- `nom_createur` : Le nom du salon créateur (par défaut : "➕ Rejoindre pour Créer")
-- `limite_users` : Limite d'utilisateurs (0-99, 0 = illimité)
+### Voice Channel Management
 
-Exemples :
+#### !setupvoice [name_template] [position] [creator_name] [user_limit]
+Creates a new voice channel creator with custom parameters
+- `name_template`: Template for new channel names (default: "Channel of {user}")
+- `position`: Where to place new channels ('before' or 'after', default: 'after')
+- `creator_name`: Name of the creator channel (default: "➕ Join to Create")
+- `user_limit`: User limit (0-99, 0 = unlimited)
+
+Examples:
 ```
-!setupvoice                                    # Configuration basique
-!setupvoice "Gaming avec {user}"               # Nom personnalisé
-!setupvoice "Salon de {user}" before          # Création avant le créateur
-!setupvoice "Salon de {user}" after "🎮 Créer" 5 # Après le créateur avec limite
-```
-
-### !removevoice <salon>
-Supprime un créateur de salon vocal
-- `salon` : Mention ou ID du salon créateur à supprimer
-
-Exemple :
-```
-!removevoice #rejoindre-pour-creer
+!setupvoice                                    # Basic setup
+!setupvoice "Gaming with {user}"               # Custom name
+!setupvoice "Channel of {user}" before         # Create before creator
+!setupvoice "Channel of {user}" after "🎮 Create" 5 # After creator with limit
 ```
 
-### !listvoice
-Liste tous les créateurs de salons vocaux du serveur avec leurs paramètres
+#### !removevoice <channel>
+Removes a voice channel creator
+- `channel`: Mention or ID of the creator channel to remove
+
+Example:
+```
+!removevoice #join-to-create
+```
+
+#### !listvoice
+Lists all voice channel creators on the server with their parameters
+
+### Configuration Commands
+
+#### !config language <lang>
+Set the bot's language for the server
+- `lang`: Language code ('en' for English, 'fr' for French)
+
+#### !config autorole <role> [expiry_minutes] [check_rejoin]
+Configure automatic role assignment for new members
+- `role`: The role to assign
+- `expiry_minutes`: Optional number of minutes after which the role is removed
+- `check_rejoin`: If true, role won't be given to rejoining members
+
+#### !config remove_autorole
+Disable automatic role assignment
+
+#### !config sticky <channel> <message>
+Set a sticky message in a channel
+- `channel`: The channel to set the sticky message in
+- `message`: The content of the sticky message
+
+#### !config remove_sticky <channel>
+Remove sticky message from a channel
 
 ### !help
-Affiche l'aide détaillée du bot
+Display detailed bot help
 
-## Permissions Requises
+## Required Permissions
 
-Le bot nécessite les permissions suivantes :
-- Gérer les salons
-- Déplacer des membres
-- Voir les salons
-- Se connecter
-- Envoyer des messages
+The bot requires the following permissions:
+- Manage Channels
+- Move Members
+- View Channels
+- Connect
+- Send Messages
+- Manage Roles (for autorole feature)
 
 ## Notes
 
-- Seuls les administrateurs du serveur peuvent gérer les créateurs de salons vocaux
-- Les modèles de noms de salons prennent en charge la variable {user} qui est remplacée par le nom d'affichage de l'utilisateur
-- Les salons créés sont automatiquement supprimés lorsqu'ils sont vides
-- Les nouveaux salons sont toujours créés dans la même catégorie que leur salon créateur
-- Les nouveaux salons peuvent être positionnés avant ou après leur créateur
-- Les configurations sont sauvegardées automatiquement et persistent après le redémarrage du bot
-- Vous pouvez avoir plusieurs salons créateurs dans le même serveur
+- Only server administrators can manage voice channel creators
+- Channel name templates support the {user} variable which is replaced with the user's display name
+- Created channels are automatically deleted when empty
+- New channels are always created in the same category as their creator
+- New channels can be positioned before or after their creator
+- Configurations are automatically saved and persist after bot restart
+- You can have multiple creator channels in the same server
+- Auto-role feature can be configured to:
+  - Skip members who have joined before
+  - Remove roles after a specified number of minutes
+  - Only apply to first-time joins
+- Sticky messages will always stay at the bottom of their channel
 - For Heroku deployments, use the button above and read their [T.O.S](https://www.heroku.com/policy/heroku-elements-terms/)
