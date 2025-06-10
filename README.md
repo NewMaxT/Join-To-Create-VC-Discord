@@ -102,6 +102,35 @@ The bot requires the following permissions:
 - Send Messages
 - Manage Roles (for autorole feature)
 
+## Discord Developer Portal Setup
+
+### Required Scopes
+When creating your bot invite link, you need to select these scopes:
+- `bot` - Required to add the bot to servers
+- `applications.commands` - Required for slash commands support (WIP)
+
+### Required Bot Permissions
+In the Discord Developer Portal, enable these permissions for your bot:
+- **General Permissions**
+  - View Channels
+  - Send Messages
+  - Manage Messages (for sticky messages)
+  - Read Message History (for sticky messages)
+  - Add Reactions (for reaction roles, WIP)
+  
+- **Voice Channel Permissions**
+  - Connect
+  - Move Members
+  - Manage Channels
+  
+- **Role Permissions**
+  - Manage Roles (for autorole feature)
+
+### Privileged Gateway Intents
+Enable these intents in the Discord Developer Portal:
+- SERVER MEMBERS INTENT - Required for autorole feature
+- MESSAGE CONTENT INTENT - Required for command handling
+
 ## Notes
 
 - Only server administrators can manage voice channel creators
