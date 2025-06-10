@@ -7,6 +7,7 @@ from typing import Dict, Optional, Set
 from localization import Localization
 from config import ServerConfig
 import asyncio
+from nextcord import Activity, ActivityType
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -17,7 +18,9 @@ intents.voice_states = True
 intents.message_content = True
 intents.members = True  # Required for autorole
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+activity = Activity(type=ActivityType.playing, name="Fully Open-Source")
+
+bot = commands.Bot(command_prefix='!', intents=intents, activity=activity)
 
 # Initialize localization and server config
 loc = Localization()
@@ -92,8 +95,10 @@ def load_configs():
 
 @bot.event
 async def on_ready():
-    print(f'Bot prêt ! Connecté en tant que {bot.user.name}')
-    # Charger les configurations au démarrage
+    """Bot startup event"""
+    print(f'Bot ready! Connected as {bot.user.name}')
+
+    # Load configurations at startup
     load_configs()
     server_config.load_config()
     # Start background tasks
@@ -483,7 +488,6 @@ async def help(ctx):
     await ctx.send(embed=embed)
 
 # Add error handler for missing permissions
-@help.error
 @setupvoice.error
 @removevoice.error
 @listvoice.error
