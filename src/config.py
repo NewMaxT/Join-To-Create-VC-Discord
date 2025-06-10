@@ -100,14 +100,14 @@ class ServerConfig:
         """Get autorole configuration for a guild"""
         return self.autorole_config.get(guild_id)
     
-    def set_sticky_message(self, guild_id: int, channel_id: int, content: str):
+    def set_sticky_message(self, guild_id: int, channel_id: int, content: str, last_message_id: Optional[int] = None):
         """Set sticky message for a channel"""
         if guild_id not in self.sticky_messages:
             self.sticky_messages[guild_id] = {}
         
         self.sticky_messages[guild_id][channel_id] = {
             'content': content,
-            'last_message_id': None
+            'last_message_id': last_message_id
         }
         self.save_config()
     
