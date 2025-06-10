@@ -100,8 +100,10 @@ async def on_ready():
     # Load configurations at startup
     load_configs()
     server_config.load_config()
+    
     # Start background tasks
     check_role_expiry.start()
+    check_sticky_messages.start()
     
     # Vérifier que les salons créateurs existent toujours
     invalid_configs = []
@@ -131,7 +133,7 @@ async def on_ready():
     # Sauvegarder les configurations nettoyées
     save_configs()
 
-@tasks.loop(hours=1)
+@tasks.loop(seconds=30)
 async def check_role_expiry():
     """Check and remove expired roles"""
     expired_roles = server_config.get_expired_roles()
@@ -157,6 +159,50 @@ async def check_role_expiry():
                 except nextcord.HTTPException:
                     pass
 
+@tasks.loop(seconds=5)
+async def check_sticky_messages():
+    """Check and maintain sticky messages every 5 seconds"""
+    for guild_id, channels in server_config.sticky_messages.items():
+        guild = bot.get_guild(guild_id)
+        if not guild:
+            continue
+
+        for channel_id, sticky_config in channels.items():
+            channel = guild.get_channel(channel_id)
+            if not channel:
+                continue
+
+            try:
+                # Get the last message in the channel
+                last_messages = [msg async for msg in channel.history(limit=1)]
+                last_message = last_messages[0] if last_messages else None
+                
+                # Get the last sticky message if it exists
+                last_sticky_id = sticky_config.get('last_message_id')
+                last_sticky = None
+                if last_sticky_id:
+                    try:
+                        last_sticky = await channel.fetch_message(last_sticky_id)
+                    except (nextcord.NotFound, nextcord.HTTPException):
+                        last_sticky = None
+
+                # If the last message isn't our sticky message, we need to repost it
+                if not last_message or last_message.id != sticky_config.get('last_message_id'):
+                    # Delete the old sticky message if it exists
+                    if last_sticky:
+                        try:
+                            await last_sticky.delete()
+                        except nextcord.HTTPException:
+                            pass
+
+                    # Post new sticky message
+                    new_message = await channel.send(sticky_config['content'])
+                    sticky_config['last_message_id'] = new_message.id
+                    server_config.update_sticky_message_id(guild_id, channel_id, new_message.id)
+
+            except Exception as e:
+                print(f"Error maintaining sticky message in channel {channel_id}: {e}")
+
 @bot.event
 async def on_member_join(member):
     """Handle new member joins"""
@@ -178,36 +224,9 @@ async def on_member_join(member):
 
 @bot.event
 async def on_message(message):
-    """Handle messages and sticky messages"""
+    """Handle messages"""
     if message.author.bot:
         return
-        
-    # Process sticky messages
-    guild_id = message.guild.id if message.guild else None
-    channel_id = message.channel.id if message.channel else None
-    
-    if guild_id and channel_id:
-        sticky_config = server_config.get_sticky_message(guild_id, channel_id)
-        if sticky_config:
-            # Delete all previous sticky messages from the bot
-            try:
-                # Fetch last 50 messages to find and delete old sticky messages
-                async for old_message in message.channel.history(limit=50):
-                    if (old_message.author == bot.user and 
-                        old_message.content == sticky_config['content']):
-                        try:
-                            await old_message.delete()
-                        except nextcord.HTTPException:
-                            pass
-            except nextcord.HTTPException:
-                pass
-            
-            # Wait a short time to let other messages appear
-            await asyncio.sleep(0.5)
-            
-            # Send new sticky message
-            new_message = await message.channel.send(sticky_config['content'])
-            server_config.update_sticky_message_id(guild_id, channel_id, new_message.id)
     
     await bot.process_commands(message)
 
@@ -255,7 +274,7 @@ async def remove_autorole(ctx):
 @config_group.command(name='sticky')
 async def set_sticky(ctx, channel: nextcord.TextChannel, *, content: str):
     """Set a sticky message in a channel"""
-    server_config.set_sticky_message(ctx.guild.id, channel.id, content)
+    server_config.set_sticky_message(ctx.guild.id, channel.id, content, last_message_id=None)
     await ctx.send(loc.get_text(ctx.guild.id, 'config.sticky.set_success', channel=channel.mention))
 
 @config_group.command(name='remove_sticky')
