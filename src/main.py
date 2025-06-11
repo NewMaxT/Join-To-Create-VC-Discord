@@ -156,6 +156,7 @@ async def check_role_expiry():
             if member and role in member.roles:
                 try:
                     await member.remove_roles(role)
+                    print(f"Removed role {role.name} from {member.display_name}")
                 except nextcord.HTTPException:
                     pass
 
@@ -192,6 +193,7 @@ async def check_sticky_messages():
                     if last_sticky:
                         try:
                             await last_sticky.delete()
+                            print(f"Deleted old sticky message in channel {channel_id}")
                         except nextcord.HTTPException:
                             pass
 
@@ -199,6 +201,7 @@ async def check_sticky_messages():
                     new_message = await channel.send(sticky_config['content'])
                     sticky_config['last_message_id'] = new_message.id
                     server_config.update_sticky_message_id(guild_id, channel_id, new_message.id)
+                    print(f"Posted new sticky message in channel {channel_id}")
 
             except Exception as e:
                 print(f"Error maintaining sticky message in channel {channel_id}: {e}")
@@ -219,6 +222,7 @@ async def on_member_join(member):
             try:
                 await member.add_roles(role)
                 server_config.add_joined_member(guild_id, member.id)
+                print(f"Added role {role.name} to {member.display_name}")
             except nextcord.HTTPException:
                 pass
 
@@ -235,7 +239,7 @@ async def on_message(message):
 async def config_group(ctx):
     """Configuration commands group"""
     if ctx.invoked_subcommand is None:
-        await ctx.send(loc.get_text(ctx.guild.id, 'help.title'))
+        await ctx.send("📢 !help")
 
 @config_group.command(name='language')
 async def set_language(ctx, language: str):
@@ -432,6 +436,7 @@ async def on_voice_state_update(member, before, after):
             
             # Déplacer le membre dans le nouveau salon
             await member.move_to(new_channel)
+            print(f"Moved member {member.display_name} to {new_channel.name}")
     
     # Nettoyer les salons vides
     if before.channel is not None and guild_id in created_channels:
@@ -450,7 +455,7 @@ async def on_voice_state_update(member, before, after):
 
 @bot.command()
 @commands.has_permissions(administrator=True)
-async def help(ctx):
+async def evy_help(ctx):
     """Display bot help (Admin only)"""
     embed = nextcord.Embed(
         title=loc.get_text(ctx.guild.id, 'help.title'),

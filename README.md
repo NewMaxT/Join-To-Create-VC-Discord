@@ -1,8 +1,6 @@
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://www.heroku.com/deploy?template=https://github.com/NewMaxT/Automated-Voice-Channel-Creator)
 
-# Automated Voice Channel Creator
-
-This Discord bot automatically creates new voice channels when users join designated "creator" channels. When users leave the created channels, they are automatically deleted.
+# Multi-Feature Open Source Discord BOT
 
 ## Features
 
