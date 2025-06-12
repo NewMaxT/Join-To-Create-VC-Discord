@@ -1,6 +1,7 @@
 import os
 import json
 import nextcord
+from nextcord import Interaction, SlashOption
 from nextcord.ext import commands, tasks
 from dotenv import load_dotenv
 from typing import Dict, Optional, Set
@@ -19,7 +20,7 @@ intents.message_content = True
 intents.members = True  # Required for autorole
 
 activity = Activity(type=ActivityType.playing, name="Fully Open-Source")
-bot = commands.Bot(command_prefix='!', intents=intents, activity=activity)
+bot = commands.Bot(intents=intents, activity=activity)
 
 # Initialize localization and server config
 loc = Localization()
@@ -236,98 +237,113 @@ async def on_member_join(member):
     else:
         print(f"No autorole configuration found for guild {guild_id}")
 
-@bot.event
-async def on_message(message):
-    """Handle messages"""
-    if message.author.bot:
-        return
-    
-    await bot.process_commands(message)
-
-@bot.group(name='config')
-@commands.has_permissions(administrator=True)
-async def config_group(ctx):
+@bot.slash_command(name="config", description="Configuration commands group")
+async def config(interaction: Interaction):
     """Configuration commands group"""
-    if ctx.invoked_subcommand is None:
-        await ctx.send("📢 Unknown command - Use !cmds_help")
+    pass
 
-@config_group.command(name='language')
-async def set_language(ctx, language: str):
+@config.subcommand(name="language", description="Set the bot's language for this server")
+@nextcord.default_permissions(administrator=True)
+async def set_language(
+    interaction: Interaction,
+    language: str = SlashOption(description="The language code to set (e.g. 'en', 'fr')")
+):
     """Set the bot's language for this server"""
-    if loc.set_language(ctx.guild.id, language):
-        await ctx.send(loc.get_text(ctx.guild.id, 'config.language.set_success'))
+    if loc.set_language(interaction.guild_id, language):
+        await interaction.response.send_message(loc.get_text(interaction.guild_id, 'config.language.set_success'))
     else:
-        await ctx.send(loc.get_text(ctx.guild.id, 'config.language.invalid', 
+        await interaction.response.send_message(loc.get_text(interaction.guild_id, 'config.language.invalid', 
                                   langs=', '.join(loc.get_available_languages())))
 
-@config_group.command(name='autorole')
-async def set_autorole(ctx, role: nextcord.Role, expiry_minutes: Optional[int] = None, check_rejoin: bool = False):
+@config.subcommand(name="autorole", description="Configure auto-role for new members")
+@nextcord.default_permissions(administrator=True)
+async def set_autorole(
+    interaction: Interaction,
+    role: nextcord.Role = SlashOption(description="The role to automatically assign"),
+    expiry_minutes: Optional[int] = SlashOption(description="Optional: Minutes until role expires", required=False),
+    check_rejoin: bool = SlashOption(description="Whether to check if members are rejoining", required=False, default=False)
+):
     """Configure auto-role for new members"""
     # Validate expiry_minutes if provided
     if expiry_minutes is not None and expiry_minutes <= 0:
-        await ctx.send("Expiry time must be greater than 0 minutes!")
+        await interaction.response.send_message("Expiry time must be greater than 0 minutes!")
         return
         
-    server_config.set_autorole(ctx.guild.id, role.id, expiry_minutes, check_rejoin)
+    server_config.set_autorole(interaction.guild_id, role.id, expiry_minutes, check_rejoin)
     
     # Send confirmation message
-    await ctx.send(loc.get_text(ctx.guild.id, 'config.autorole.set_success', role=role.mention))
+    await interaction.response.send_message(loc.get_text(interaction.guild_id, 'config.autorole.set_success', role=role.mention))
     
     if expiry_minutes:
-        await ctx.send(loc.get_text(ctx.guild.id, 'config.autorole.expiry_set', minutes=expiry_minutes))
+        await interaction.followup.send(loc.get_text(interaction.guild_id, 'config.autorole.expiry_set', minutes=expiry_minutes))
     
     if check_rejoin:
-        await ctx.send(loc.get_text(ctx.guild.id, 'config.autorole.rejoin_enabled'))
+        await interaction.followup.send(loc.get_text(interaction.guild_id, 'config.autorole.rejoin_enabled'))
 
-@config_group.command(name='remove_autorole')
-async def remove_autorole(ctx):
+@config.subcommand(name="remove_autorole", description="Remove auto-role configuration")
+@nextcord.default_permissions(administrator=True)
+async def remove_autorole(interaction: Interaction):
     """Remove auto-role configuration"""
-    server_config.remove_autorole(ctx.guild.id)
-    await ctx.send(loc.get_text(ctx.guild.id, 'config.autorole.remove_success'))
+    server_config.remove_autorole(interaction.guild_id)
+    await interaction.response.send_message(loc.get_text(interaction.guild_id, 'config.autorole.remove_success'))
 
-@config_group.command(name='sticky')
-async def set_sticky(ctx, channel: nextcord.TextChannel, *, content: str):
+@config.subcommand(name="sticky", description="Set a sticky message in a channel")
+@nextcord.default_permissions(administrator=True)
+async def set_sticky(
+    interaction: Interaction,
+    channel: nextcord.TextChannel = SlashOption(description="The channel to set the sticky message in"),
+    content: str = SlashOption(description="The content of the sticky message")
+):
     """Set a sticky message in a channel"""
-    server_config.set_sticky_message(ctx.guild.id, channel.id, content, last_message_id=None)
-    await ctx.send(loc.get_text(ctx.guild.id, 'config.sticky.set_success', channel=channel.mention))
+    server_config.set_sticky_message(interaction.guild_id, channel.id, content, last_message_id=None)
+    await interaction.response.send_message(loc.get_text(interaction.guild_id, 'config.sticky.set_success', channel=channel.mention))
 
-@config_group.command(name='remove_sticky')
-async def remove_sticky(ctx, channel: nextcord.TextChannel):
+@config.subcommand(name="remove_sticky", description="Remove sticky message from a channel")
+@nextcord.default_permissions(administrator=True)
+async def remove_sticky(
+    interaction: Interaction,
+    channel: nextcord.TextChannel = SlashOption(description="The channel to remove the sticky message from")
+):
     """Remove sticky message from a channel"""
-    server_config.remove_sticky_message(ctx.guild.id, channel.id)
-    await ctx.send(loc.get_text(ctx.guild.id, 'config.sticky.remove_success', channel=channel.mention))
+    server_config.remove_sticky_message(interaction.guild_id, channel.id)
+    await interaction.response.send_message(loc.get_text(interaction.guild_id, 'config.sticky.remove_success', channel=channel.mention))
 
-@bot.command()
-@commands.has_permissions(administrator=True)
+@bot.slash_command(name="setupvoice", description="Creates a voice channel creator with custom parameters")
+@nextcord.default_permissions(administrator=True)
 async def setupvoice(
-    ctx, 
-    template_name: str = "Channel of {user}",
-    position: str = "after",
-    creator_name: str = "➕ Join to Create",
-    user_limit: int = 0
+    interaction: Interaction,
+    template_name: str = SlashOption(
+        description="Template for channel names, use {user} for the user's name",
+        default="Channel of {user}"
+    ),
+    position: str = SlashOption(
+        description="Position of new channels relative to creator",
+        choices=["before", "after"],
+        default="after"
+    ),
+    creator_name: str = SlashOption(
+        description="Name of the creator channel",
+        default="➕ Join to Create"
+    ),
+    user_limit: int = SlashOption(
+        description="User limit for created channels (0 = unlimited)",
+        min_value=0,
+        max_value=99,
+        default=0
+    )
 ):
     """Creates a voice channel creator with custom parameters"""
-    guild = ctx.guild
-    current_category = ctx.channel.category
+    guild = interaction.guild
+    current_category = interaction.channel.category
 
     # Validate template name
     if not template_name or len(template_name) > 100:
-        await ctx.send("The template name must be between 1 and 100 characters!")
+        await interaction.response.send_message("The template name must be between 1 and 100 characters!")
         return
 
     # Validate creator name
     if not creator_name or len(creator_name) > 100:
-        await ctx.send("The creator channel name must be between 1 and 100 characters!")
-        return
-
-    # Validate position
-    if position not in ["before", "after"]:
-        await ctx.send("Position must be 'before' or 'after'!")
-        return
-
-    # Validate user limit
-    if user_limit < 0 or user_limit > 99:
-        await ctx.send("User limit must be between 0 and 99 (0 = unlimited)!")
+        await interaction.response.send_message("The creator channel name must be between 1 and 100 characters!")
         return
 
     # Create voice channel creator
@@ -350,11 +366,11 @@ async def setupvoice(
     # Save configurations
     save_configs()
 
-    location = loc.get_text(ctx.guild.id, 'commands.location_before' if position == "before" else 'commands.location_after')
-    limit = loc.get_text(ctx.guild.id, 'commands.limit_unlimited') if user_limit == 0 else str(user_limit)
+    location = loc.get_text(interaction.guild_id, 'commands.location_before' if position == "before" else 'commands.location_after')
+    limit = loc.get_text(interaction.guild_id, 'commands.limit_unlimited') if user_limit == 0 else str(user_limit)
     
-    await ctx.send(loc.get_text(
-        ctx.guild.id,
+    await interaction.response.send_message(loc.get_text(
+        interaction.guild_id,
         'commands.setup_success',
         creator_name=creator_name,
         channel=create_channel.mention,
@@ -363,36 +379,39 @@ async def setupvoice(
         limit=limit
     ))
 
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def removevoice(ctx, channel: nextcord.VoiceChannel):
+@bot.slash_command(name="removevoice", description="Removes a voice channel creator")
+@nextcord.default_permissions(administrator=True)
+async def removevoice(
+    interaction: Interaction,
+    channel: nextcord.VoiceChannel = SlashOption(description="The voice channel creator to remove")
+):
     """Removes a voice channel creator"""
-    if channel.id in guild_configs.get(ctx.guild.id, {}):
+    if channel.id in guild_configs.get(interaction.guild_id, {}):
         await channel.delete()
-        del guild_configs[ctx.guild.id][channel.id]
-        if not guild_configs[ctx.guild.id]:
-            del guild_configs[ctx.guild.id]
+        del guild_configs[interaction.guild_id][channel.id]
+        if not guild_configs[interaction.guild_id]:
+            del guild_configs[interaction.guild_id]
         # Save configurations
         save_configs()
-        await ctx.send(loc.get_text(ctx.guild.id, 'commands.remove_success'))
+        await interaction.response.send_message(loc.get_text(interaction.guild_id, 'commands.remove_success'))
     else:
-        await ctx.send(loc.get_text(ctx.guild.id, 'commands.remove_error'))
+        await interaction.response.send_message(loc.get_text(interaction.guild_id, 'commands.remove_error'))
 
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def listvoice(ctx):
+@bot.slash_command(name="listvoice", description="Lists all voice channel creators on the server")
+@nextcord.default_permissions(administrator=True)
+async def listvoice(interaction: Interaction):
     """Lists all voice channel creators on the server"""
-    if ctx.guild.id not in guild_configs or not guild_configs[ctx.guild.id]:
-        await ctx.send(loc.get_text(ctx.guild.id, 'commands.list_none'))
+    if interaction.guild_id not in guild_configs or not guild_configs[interaction.guild_id]:
+        await interaction.response.send_message(loc.get_text(interaction.guild_id, 'commands.list_none'))
         return
 
     creators = []
-    for creator_id, config in guild_configs[ctx.guild.id].items():
-        channel = ctx.guild.get_channel(creator_id)
+    for creator_id, config in guild_configs[interaction.guild_id].items():
+        channel = interaction.guild.get_channel(creator_id)
         if channel:
-            position = config.position if config.position is not None else loc.get_text(ctx.guild.id, 'commands.default_position')
+            position = config.position if config.position is not None else loc.get_text(interaction.guild_id, 'commands.default_position')
             creators.append(loc.get_text(
-                ctx.guild.id,
+                interaction.guild_id,
                 'commands.list_creator_info',
                 channel=channel.mention,
                 template=config.template_name,
@@ -401,14 +420,82 @@ async def listvoice(ctx):
 
     if creators:
         embed = nextcord.Embed(
-            title=loc.get_text(ctx.guild.id, 'commands.list_creators'),
+            title=loc.get_text(interaction.guild_id, 'commands.list_creators'),
             color=0x00ff00
         )
         for i, creator in enumerate(creators, 1):
             embed.add_field(name=f"Creator {i}", value=creator, inline=False)
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
     else:
-        await ctx.send(loc.get_text(ctx.guild.id, 'commands.list_none_active'))
+        await interaction.response.send_message(loc.get_text(interaction.guild_id, 'commands.list_none_active'))
+
+@bot.slash_command(name="help", description="Display bot help")
+@nextcord.default_permissions(administrator=True)
+async def cmds_help(interaction: Interaction):
+    """Display bot help (Admin only)"""
+    embed = nextcord.Embed(
+        title=loc.get_text(interaction.guild_id, 'help.title'),
+        description=loc.get_text(interaction.guild_id, 'help.description'),
+        color=0x00ff00
+    )
+
+    # setupvoice command
+    embed.add_field(
+        name=loc.get_text(interaction.guild_id, 'help.setup_title'),
+        value=loc.get_text(interaction.guild_id, 'help.setup_desc'),
+        inline=False
+    )
+
+    # removevoice command
+    embed.add_field(
+        name=loc.get_text(interaction.guild_id, 'help.remove_title'),
+        value=loc.get_text(interaction.guild_id, 'help.remove_desc'),
+        inline=False
+    )
+
+    # listvoice command
+    embed.add_field(
+        name=loc.get_text(interaction.guild_id, 'help.list_title'),
+        value=loc.get_text(interaction.guild_id, 'help.list_desc'),
+        inline=False
+    )
+
+    # Configuration commands
+    embed.add_field(
+        name=loc.get_text(interaction.guild_id, 'help.config_title'),
+        value=loc.get_text(interaction.guild_id, 'help.config_desc'),
+        inline=False
+    )
+
+    # help command
+    embed.add_field(
+        name=loc.get_text(interaction.guild_id, 'help.help_title'),
+        value=loc.get_text(interaction.guild_id, 'help.help_desc'),
+        inline=False
+    )
+
+    # Important notes
+    embed.add_field(
+        name=loc.get_text(interaction.guild_id, 'help.notes_title'),
+        value=loc.get_text(interaction.guild_id, 'help.notes_desc'),
+        inline=False
+    )
+
+    # Footer with version
+    embed.set_footer(text=loc.get_text(interaction.guild_id, 'help.footer'))
+
+    await interaction.response.send_message(embed=embed)
+
+# Update error handlers for slash commands
+@bot.event
+async def on_application_command_error(interaction: Interaction, error):
+    """Global error handler for slash commands"""
+    if isinstance(error, nextcord.errors.ApplicationCheckFailure):
+        await interaction.response.send_message(loc.get_text(interaction.guild_id, 'errors.missing_permissions'), ephemeral=True)
+    else:
+        # Log other errors
+        print(f"Error in slash command {interaction.application_command.name}: {error}")
+        await interaction.response.send_message("An error occurred while executing this command.", ephemeral=True)
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -460,89 +547,6 @@ async def on_voice_state_update(member, before, after):
             # Supprimer le set si c'était le dernier salon
             if not created_channels[guild_id]:
                 del created_channels[guild_id]
-
-@bot.remove_command('help')  # Remove default help command
-
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def cmds_help(ctx):
-    """Display bot help (Admin only)"""
-    embed = nextcord.Embed(
-        title=loc.get_text(ctx.guild.id, 'help.title'),
-        description=loc.get_text(ctx.guild.id, 'help.description'),
-        color=0x00ff00
-    )
-
-    # setupvoice command
-    embed.add_field(
-        name=loc.get_text(ctx.guild.id, 'help.setup_title'),
-        value=loc.get_text(ctx.guild.id, 'help.setup_desc'),
-        inline=False
-    )
-
-    # removevoice command
-    embed.add_field(
-        name=loc.get_text(ctx.guild.id, 'help.remove_title'),
-        value=loc.get_text(ctx.guild.id, 'help.remove_desc'),
-        inline=False
-    )
-
-    # listvoice command
-    embed.add_field(
-        name=loc.get_text(ctx.guild.id, 'help.list_title'),
-        value=loc.get_text(ctx.guild.id, 'help.list_desc'),
-        inline=False
-    )
-
-    # Configuration commands
-    embed.add_field(
-        name=loc.get_text(ctx.guild.id, 'help.config_title'),
-        value=loc.get_text(ctx.guild.id, 'help.config_desc'),
-        inline=False
-    )
-
-    # help command
-    embed.add_field(
-        name=loc.get_text(ctx.guild.id, 'help.help_title'),
-        value=loc.get_text(ctx.guild.id, 'help.help_desc'),
-        inline=False
-    )
-
-    # Important notes
-    embed.add_field(
-        name=loc.get_text(ctx.guild.id, 'help.notes_title'),
-        value=loc.get_text(ctx.guild.id, 'help.notes_desc'),
-        inline=False
-    )
-
-    # Footer with version
-    embed.set_footer(text=loc.get_text(ctx.guild.id, 'help.footer'))
-
-    await ctx.send(embed=embed)
-
-# Add error handler for missing permissions
-@setupvoice.error
-@removevoice.error
-@listvoice.error
-@config_group.error
-async def command_error(ctx, error):
-    """Handle permission errors for commands"""
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send(loc.get_text(ctx.guild.id, 'errors.missing_permissions'))
-    else:
-        # Log other errors
-        print(f"Error in {ctx.command}: {error}")
-
-@bot.event
-async def on_command_error(ctx, error):
-    """Global error handler for uncaught command errors"""
-    if isinstance(error, commands.CommandNotFound):
-        return  # Ignore command not found errors
-    elif isinstance(error, commands.MissingPermissions):
-        await ctx.send(loc.get_text(ctx.guild.id, 'errors.missing_permissions'))
-    else:
-        # Log other errors
-        print(f"Uncaught error in {ctx.command}: {error}")
 
 # Lancer le bot
 bot.run(os.getenv('DISCORD_TOKEN'))
