@@ -104,6 +104,35 @@ async def on_ready():
     load_configs()
     server_config.load_config()
     
+    # Print autorole information for each guild
+    for guild in bot.guilds:
+        config = server_config.get_autorole(guild.id)
+        if config:
+            role = guild.get_role(config['role_id'])
+            if role:
+                print(f"\nAutorole information for {guild.name}:")
+                print(f"Role: {role.name}")
+                
+                # Get members with the role
+                members_with_role = [member for member in guild.members if role in member.roles]
+                
+                if members_with_role:
+                    print(f"Members with {role.name}:")
+                    for member in members_with_role:
+                        # Get expiry time if set
+                        expiry_time = server_config.get_role_expiry_time(guild.id, member.id)
+                        if expiry_time:
+                            remaining_time = expiry_time - asyncio.get_event_loop().time()
+                            if remaining_time > 0:
+                                minutes = int(remaining_time / 60)
+                                print(f"  - {member.display_name}: {minutes} minutes remaining")
+                            else:
+                                print(f"  - {member.display_name}: Role expired")
+                        else:
+                            print(f"  - {member.display_name}: No expiry")
+                else:
+                    print("No members currently have this role")
+    
     # Start background tasks
     check_role_expiry.start()
     check_sticky_messages.start()
