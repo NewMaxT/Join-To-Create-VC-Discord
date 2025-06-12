@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 from typing import Dict, Optional, Set
 from localization import Localization
 from config import ServerConfig
-import asyncio
 from nextcord import Activity, ActivityType
+from datetime import datetime
 
 # Charger les variables d'environnement
 load_dotenv()
