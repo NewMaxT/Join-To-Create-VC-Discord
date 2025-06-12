@@ -238,12 +238,13 @@ async def on_member_join(member):
         print(f"No autorole configuration found for guild {guild_id}")
 
 @bot.slash_command(name="config", description="Configuration commands group")
+@commands.has_permissions(administrator=True)
 async def config(interaction: Interaction):
     """Configuration commands group"""
     pass
 
 @config.subcommand(name="language", description="Set the bot's language for this server")
-@nextcord.default_permissions(administrator=True)
+@commands.has_permissions(administrator=True)
 async def set_language(
     interaction: Interaction,
     language: str = SlashOption(description="The language code to set (e.g. 'en', 'fr')")
@@ -256,7 +257,7 @@ async def set_language(
                                   langs=', '.join(loc.get_available_languages())))
 
 @config.subcommand(name="autorole", description="Configure auto-role for new members")
-@nextcord.default_permissions(administrator=True)
+@commands.has_permissions(administrator=True)
 async def set_autorole(
     interaction: Interaction,
     role: nextcord.Role = SlashOption(description="The role to automatically assign"),
@@ -281,14 +282,14 @@ async def set_autorole(
         await interaction.followup.send(loc.get_text(interaction.guild_id, 'config.autorole.rejoin_enabled'))
 
 @config.subcommand(name="remove_autorole", description="Remove auto-role configuration")
-@nextcord.default_permissions(administrator=True)
+@commands.has_permissions(administrator=True)
 async def remove_autorole(interaction: Interaction):
     """Remove auto-role configuration"""
     server_config.remove_autorole(interaction.guild_id)
     await interaction.response.send_message(loc.get_text(interaction.guild_id, 'config.autorole.remove_success'))
 
 @config.subcommand(name="sticky", description="Set a sticky message in a channel")
-@nextcord.default_permissions(administrator=True)
+@commands.has_permissions(administrator=True)
 async def set_sticky(
     interaction: Interaction,
     channel: nextcord.TextChannel = SlashOption(description="The channel to set the sticky message in"),
@@ -299,7 +300,7 @@ async def set_sticky(
     await interaction.response.send_message(loc.get_text(interaction.guild_id, 'config.sticky.set_success', channel=channel.mention))
 
 @config.subcommand(name="remove_sticky", description="Remove sticky message from a channel")
-@nextcord.default_permissions(administrator=True)
+@commands.has_permissions(administrator=True)
 async def remove_sticky(
     interaction: Interaction,
     channel: nextcord.TextChannel = SlashOption(description="The channel to remove the sticky message from")
@@ -309,7 +310,7 @@ async def remove_sticky(
     await interaction.response.send_message(loc.get_text(interaction.guild_id, 'config.sticky.remove_success', channel=channel.mention))
 
 @bot.slash_command(name="setupvoice", description="Creates a voice channel creator with custom parameters")
-@nextcord.default_permissions(administrator=True)
+@commands.has_permissions(administrator=True)
 async def setupvoice(
     interaction: Interaction,
     template_name: str = SlashOption(
@@ -380,7 +381,7 @@ async def setupvoice(
     ))
 
 @bot.slash_command(name="removevoice", description="Removes a voice channel creator")
-@nextcord.default_permissions(administrator=True)
+@commands.has_permissions(administrator=True)
 async def removevoice(
     interaction: Interaction,
     channel: nextcord.VoiceChannel = SlashOption(description="The voice channel creator to remove")
@@ -398,7 +399,7 @@ async def removevoice(
         await interaction.response.send_message(loc.get_text(interaction.guild_id, 'commands.remove_error'))
 
 @bot.slash_command(name="listvoice", description="Lists all voice channel creators on the server")
-@nextcord.default_permissions(administrator=True)
+@commands.has_permissions(administrator=True)
 async def listvoice(interaction: Interaction):
     """Lists all voice channel creators on the server"""
     if interaction.guild_id not in guild_configs or not guild_configs[interaction.guild_id]:
@@ -430,7 +431,7 @@ async def listvoice(interaction: Interaction):
         await interaction.response.send_message(loc.get_text(interaction.guild_id, 'commands.list_none_active'))
 
 @bot.slash_command(name="help", description="Display bot help")
-@nextcord.default_permissions(administrator=True)
+@commands.has_permissions(administrator=True)
 async def cmds_help(interaction: Interaction):
     """Display bot help (Admin only)"""
     embed = nextcord.Embed(
@@ -490,7 +491,7 @@ async def cmds_help(interaction: Interaction):
 @bot.event
 async def on_application_command_error(interaction: Interaction, error):
     """Global error handler for slash commands"""
-    if isinstance(error, nextcord.errors.ApplicationCheckFailure):
+    if isinstance(error, commands.MissingPermissions):
         await interaction.response.send_message(loc.get_text(interaction.guild_id, 'errors.missing_permissions'), ephemeral=True)
     else:
         # Log other errors
