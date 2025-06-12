@@ -73,6 +73,7 @@ def save_configs():
     
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
+    print(f"Configurations saved to {CONFIG_FILE}")
 
 def load_configs():
     """Charge les configurations depuis le fichier JSON"""
@@ -89,6 +90,7 @@ def load_configs():
                 int(channel_id): VoiceCreatorConfig.from_dict(config_data)
                 for channel_id, config_data in configs.items()
             }
+        print(f"Configurations loaded from {CONFIG_FILE}")
     except Exception as e:
         print(f"Erreur lors du chargement des configurations : {e}")
 
@@ -158,6 +160,7 @@ async def check_role_expiry():
                     await member.remove_roles(role)
                     print(f"Removed role {role.name} from {member.display_name}")
                 except nextcord.HTTPException:
+                    print(f"Error removing role {role.name} from {member.display_name}")
                     pass
 
 @tasks.loop(seconds=5)
@@ -209,12 +212,14 @@ async def check_sticky_messages():
 @bot.event
 async def on_member_join(member):
     """Handle new member joins"""
+    print(f"New member joined: {member.display_name}")
     guild_id = member.guild.id
     config = server_config.get_autorole(guild_id)
     
     if config:
         # Check if we should skip rejoining members
         if config['check_rejoin'] and server_config.has_member_joined_before(guild_id, member.id):
+            print(f"Skipping rejoining member {member.display_name} because they have already joined before")
             return
             
         role = member.guild.get_role(config['role_id'])
@@ -224,7 +229,12 @@ async def on_member_join(member):
                 server_config.add_joined_member(guild_id, member.id)
                 print(f"Added role {role.name} to {member.display_name}")
             except nextcord.HTTPException:
+                print(f"Error adding role {role.name} to {member.display_name}")
                 pass
+        else:
+            print(f"Bad role configuration found for guild {guild_id}")
+    else:
+        print(f"No autorole configuration found for guild {guild_id}")
 
 @bot.event
 async def on_message(message):
@@ -239,7 +249,7 @@ async def on_message(message):
 async def config_group(ctx):
     """Configuration commands group"""
     if ctx.invoked_subcommand is None:
-        await ctx.send("📢 !help")
+        await ctx.send("📢 Unknown command - Use !cmds_help")
 
 @config_group.command(name='language')
 async def set_language(ctx, language: str):
@@ -455,7 +465,7 @@ async def on_voice_state_update(member, before, after):
 
 @bot.command()
 @commands.has_permissions(administrator=True)
-async def evy_help(ctx):
+async def cmds_help(ctx):
     """Display bot help (Admin only)"""
     embed = nextcord.Embed(
         title=loc.get_text(ctx.guild.id, 'help.title'),
