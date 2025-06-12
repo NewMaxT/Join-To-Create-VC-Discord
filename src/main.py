@@ -230,7 +230,7 @@ async def on_member_join(member):
                 server_config.add_joined_member(guild_id, member.id)
                 print(f"Added role {role.name} to {member.display_name}")
             except nextcord.HTTPException:
-                print(f"Error adding role {role.name} to {member.display_name}")
+                print(f"Error adding role {role.name} to {member.display_name}, permissions error : {nextcord.HTTPException}")
                 pass
         else:
             print(f"Bad role configuration found for guild {guild_id}")
