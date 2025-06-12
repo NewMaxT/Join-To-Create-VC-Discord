@@ -229,9 +229,26 @@ async def on_member_join(member):
                 await member.add_roles(role)
                 server_config.add_joined_member(guild_id, member.id)
                 print(f"Added role {role.name} to {member.display_name}")
-            except nextcord.HTTPException:
-                print(f"Error adding role {role.name} to {member.display_name}, permissions error : {nextcord.HTTPException}")
-                pass
+            except nextcord.HTTPException as e:
+                # Check if it's a permission error (code 403)
+                if e.code == 50013:  # Missing Permissions error code
+                    bot_permissions = member.guild.me.guild_permissions
+                    missing_perms = []
+                    
+                    # Check common required permissions
+                    if not bot_permissions.manage_roles:
+                        missing_perms.append("Manage Roles")
+                    if not bot_permissions.view_audit_log:
+                        missing_perms.append("View Audit Log")
+                    
+                    # Check role hierarchy
+                    if member.guild.me.top_role <= role:
+                        missing_perms.append(f"Role Hierarchy (Bot's highest role must be above {role.name})")
+                    
+                    print(f"Missing Permissions: {', '.join(missing_perms)}")
+                    print(f"Error details: {str(e)}")
+                else:
+                    print(f"Error adding role {role.name} to {member.display_name}, non-permission error: {str(e)}")
         else:
             print(f"Bad role configuration found for guild {guild_id}")
     else:
