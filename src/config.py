@@ -166,7 +166,32 @@ class ServerConfig:
         
         return expired_roles
 
-    def get_autorole_expiry_time(self, guild_id: int, member_id: int) -> Optional[float]:
+    def get_time_left_before_role_expiry(self, guild_id: int, member_id: int) -> Optional[int]:
+        """Get the number of minutes left before a member's role expires
+        
+        Args:
+            guild_id: The ID of the guild
+            member_id: The ID of the member
+            
+        Returns:
+            Optional[int]: The number of minutes left before expiry, or None if no expiry set
+                          Returns 0 if the role has already expired
+        """
+        config = self.get_autorole(guild_id)
+        if not config or not config.get('expiry_minutes'):
+            return None
+            
+        join_date = self.member_join_dates.get(guild_id, {}).get(member_id)
+        if not join_date:
+            return None
+            
+        expiry_time = join_date + timedelta(minutes=config['expiry_minutes'])
+        time_left = expiry_time - datetime.now()
+        minutes_left = int(time_left.total_seconds() / 60)
+        
+        return max(0, minutes_left)  # Don't return negative minutes
+
+    def get_role_expiry_time(self, guild_id: int, member_id: int) -> Optional[float]:
         """Get the expiry time for a member's role
         
         Args:
@@ -183,5 +208,6 @@ class ServerConfig:
         join_date = self.member_join_dates.get(guild_id, {}).get(member_id)
         if not join_date:
             return None
-        
-        return config['expiry_minutes']
+            
+        expiry_time = join_date + timedelta(minutes=config['expiry_minutes'])
+        return expiry_time.timestamp() 

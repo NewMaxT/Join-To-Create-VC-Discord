@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from typing import Dict, Optional, Set
 from localization import Localization
 from config import ServerConfig
+import asyncio
 from nextcord import Activity, ActivityType
 from datetime import datetime
 
@@ -120,17 +121,19 @@ async def on_ready():
                     print(f"Members with {role.name}:")
                     for member in members_with_role:
                         # Get expiry time if set
-                        expiry_time = server_config.get_autorole_expiry_time(guild.id, member.id)
+                        expiry_time = server_config.get_role_expiry_time(guild.id, member.id)
                         if expiry_time:
-                            minutes_left = expiry_time - datetime.now().minutes()
-                            if minutes_left > 0:
-                                print(f"  - {member.display_name}: {minutes_left} minutes remaining\n")
+                            current_time = datetime.now().timestamp()
+                            remaining_time = expiry_time - current_time
+                            if remaining_time > 0:
+                                minutes = int(remaining_time / 60)
+                                print(f"  - {member.display_name}: {minutes} minutes remaining")
                             else:
-                                print(f"  - {member.display_name}: Role expired\n")
+                                print(f"  - {member.display_name}: Role expired")
                         else:
-                            print(f"  - {member.display_name}: No expiry\n")
+                            print(f"  - {member.display_name}: No expiry")
                 else:
-                    print("No members currently have this role\n")
+                    print("No members currently have this role")
     
     # Start background tasks
     check_role_expiry.start()
