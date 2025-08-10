@@ -103,6 +103,25 @@ What it does:
 - If user exists on the server, has the waiting role, and score >= min_score → grants access role
 - Writes a status row on the same spreadsheet in the `Quiz_Status` tab with timestamp, guild, user, score, result, details
 
+How to get the Service Account JSON:
+- Go to Google Cloud Console → APIs & Services → Enable “Google Sheets API”
+- Create Credentials → Service account → finish
+- Open the service account → Keys → Add key → Create new key → JSON → Download
+- Copy the service account email (ends with `@<project-id>.iam.gserviceaccount.com`)
+- Share your Google Sheet with that email as Editor (needed for the `Quiz_Status` tab)
+
+Configure the bot with the JSON (choose one):
+- Option A (.env inline JSON):
+  ```
+  DISCORD_TOKEN=xxxxx
+  GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"...@...iam.gserviceaccount.com","client_id":"...","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_x509_cert_url":"..."}
+  ```
+- Option B (file path in .env):
+  ```
+  DISCORD_TOKEN=xxxxx
+  GOOGLE_SERVICE_ACCOUNT_FILE=C:\\path\\to\\service_account.json
+  ```
+
 ## Required Permissions
 
 The bot requires the following permissions:

@@ -28,9 +28,10 @@ Nous utilisons un compte de service. Deux options sont possibles :
 #### Étapes
 1. Allez sur `console.cloud.google.com`
 2. Créez/ouvrez un projet et activez l'API Google Sheets
-3. Créez un "Service Account" et générez une clé JSON
-4. Partagez votre Google Sheet avec l'email du compte de service en "Lecteur"
-5. Configurez l'une des options ci-dessous :
+3. Créez un "Service Account" et générez une clé JSON (Credentials → Service Account → Keys → Add key → JSON)
+4. Copiez l'email du compte de service (se termine par `@<project-id>.iam.gserviceaccount.com`)
+5. Partagez votre Google Sheet avec cet email en "Éditeur" (nécessaire pour écrire dans `Quiz_Status`)
+6. Configurez l'une des options ci-dessous :
 
 Option A - .env (recommandé pour déploiement sans fichier):
 ```
@@ -87,7 +88,7 @@ pip install -r requirements.txt
    # Option B: fichier
    # GOOGLE_SERVICE_ACCOUNT_FILE=D:\\chemin\\vers\\service_account.json
    ```
-2. Partagez votre Google Sheet avec l'email du compte de service (Lecteur)
+2. Partagez votre Google Sheet avec l'email du compte de service (Éditeur)
 3. Lancez le bot : `python src/main.py`
 4. Aucune ouverture de navigateur n'est nécessaire
 
