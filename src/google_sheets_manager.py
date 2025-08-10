@@ -185,7 +185,16 @@ class GoogleSheetsManager:
         for i, row in enumerate(data[start_row:], start=start_row + 1):
             if len(row) >= 3:  # Au moins 3 colonnes (A, B, C)
                 try:
-                    note = float(row[1]) if row[1] else 0  # Colonne B (note)
+                    raw_score = row[1] if len(row) > 1 else ''
+                    note = 0.0
+                    if raw_score:
+                        # Supporte "18", "18.5", "18 / 20", "18/20"
+                        # Prend le premier nombre rencontré
+                        import re
+                        match = re.search(r"(\d+(?:[\.,]\d+)?)", str(raw_score))
+                        if match:
+                            note_str = match.group(1).replace(',', '.')
+                            note = float(note_str)
                     pseudo = row[2].strip() if len(row) > 2 and row[2] else ""  # Colonne C (pseudo)
                     
                     if pseudo:  # Ignore les lignes vides

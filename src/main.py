@@ -678,12 +678,25 @@ async def cmds_help(interaction: Interaction):
 @bot.event
 async def on_application_command_error(interaction: Interaction, error):
     """Global error handler for slash commands"""
-    if isinstance(error, commands.MissingPermissions):
-        await interaction.response.send_message(loc.get_text(interaction.guild_id, 'errors.missing_permissions'), ephemeral=True)
-    else:
-        # Log other errors
-        print(f"Error in slash command {interaction.application_command.name}: {error}")
-        await interaction.response.send_message("An error occurred while executing this command.", ephemeral=True)
+    try:
+        if isinstance(error, commands.MissingPermissions):
+            if interaction.response.is_done():
+                await interaction.followup.send(loc.get_text(interaction.guild_id, 'errors.missing_permissions'), ephemeral=True)
+            else:
+                await interaction.response.send_message(loc.get_text(interaction.guild_id, 'errors.missing_permissions'), ephemeral=True)
+        else:
+            # Log other errors
+            cmd_name = getattr(interaction.application_command, 'name', 'unknown')
+            print(f"Error in slash command {cmd_name}: {error}")
+            if interaction.response.is_done():
+                await interaction.followup.send("An error occurred while executing this command.", ephemeral=True)
+            else:
+                await interaction.response.send_message("An error occurred while executing this command.", ephemeral=True)
+    except nextcord.NotFound:
+        # Interaction token likely expired (Unknown interaction). Ignore gracefully.
+        pass
+    except Exception as e:
+        print(f"Error while handling application command error: {e}")
 
 @bot.event
 async def on_voice_state_update(member, before, after):
