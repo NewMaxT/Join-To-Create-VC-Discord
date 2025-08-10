@@ -1,6 +1,6 @@
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://www.heroku.com/deploy?template=https://github.com/NewMaxT/Automated-Voice-Channel-Creator)
 
-# Multi-Feature Open Source Discord BOT
+# Multi-Feature Discord BOT
 
 ## Features
 
