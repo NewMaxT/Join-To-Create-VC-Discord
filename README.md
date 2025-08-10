@@ -99,16 +99,33 @@ Commands:
 - `/quiz test` – test connectivity and show sample results
 
 What it does:
-- Polls Google Sheets every 15s for new quiz results (Column B: score, Column C: Discord username)
+- Polls Google Sheets for new quiz results (Column B: score, Column C: Discord username). Interval is 60s by default (configurable via `/quiz setup`), and auto-reduces to 5s when more than 5 new lines need processing.
 - If user exists on the server, has the waiting role, and score >= min_score → grants access role
-- Writes a status row on the same spreadsheet in the `Quiz_Status` tab with timestamp, guild, user, score, result, details
+- Writes a status row on the same spreadsheet in the `Statut - Roles` tab with timestamp, guild, user, score, result (✅/❌), details (FR). The tab is auto-formatted as a dynamic table (frozen header, filter, auto-width, bold header, named range `Statut_Roles`).
+
+Google API rate limit:
+- Hard limit: 1 request/second. The bot enforces this with a throttle.
+- You can override the minimal interval via `.env`:
+  ```
+  GOOGLE_API_MIN_INTERVAL=1.0
+  ```
+  Keep it at 1.0 or higher. Do not set below 1.0.
 
 How to get the Service Account JSON:
 - Go to Google Cloud Console → APIs & Services → Enable “Google Sheets API”
 - Create Credentials → Service account → finish
 - Open the service account → Keys → Add key → Create new key → JSON → Download
 - Copy the service account email (ends with `@<project-id>.iam.gserviceaccount.com`)
-- Share your Google Sheet with that email as Editor (needed for the `Quiz_Status` tab)
+- Share your Google Sheet with that email as Editor (needed for the `Statut - Roles` tab)
+
+### Mass role assignment
+
+Assign a role to many members at once:
+- `/massgive target_role:@Role everyone:true` – give the role to everyone on the server
+- `/massgive target_role:@Role filter_role:@AnotherRole` – give the role only to members who have AnotherRole
+
+Notes:
+- Bot must have Manage Roles and its highest role must be above the target role.
 
 Configure the bot with the JSON (choose one):
 - Option A (.env inline JSON):

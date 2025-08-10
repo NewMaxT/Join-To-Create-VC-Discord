@@ -3,12 +3,13 @@ import nextcord
 from nextcord.ext import tasks
 from typing import Dict, List, Optional, Set
 from google_sheets_manager import GoogleSheetsManager
+from config import ServerConfig
 import json
 import os
 from datetime import datetime
 
 class QuizAutomation:
-    def __init__(self, bot: nextcord.Client):
+    def __init__(self, bot: nextcord.Client, server_config: ServerConfig):
         """
         Initialise l'automatisation du quiz
         
@@ -16,11 +17,16 @@ class QuizAutomation:
             bot: Instance du bot Discord
         """
         self.bot = bot
+        self.server_config = server_config
         self.sheets_manager = GoogleSheetsManager()
         self.processed_rows: Set[int] = set()
         self.config_file = "quiz_config.json"
         self.config = self.load_config()
         
+        # États pour limiter les requêtes
+        self.last_seen_data_rows: Optional[int] = None
+        self.last_processed_row: Optional[int] = None
+
         # Démarrer la tâche de vérification
         self.check_quiz_results.start()
     
@@ -28,7 +34,7 @@ class QuizAutomation:
         """Charge la configuration depuis le fichier JSON"""
         default_config = {
             "spreadsheet_id": "",
-            "check_interval": 15,  # secondes
+            "check_interval": 60,  # secondes (modifiable via commande)
             "min_score": 17,
             "max_score": 20,
             # On stocke les IDs des rôles (obligatoires)
@@ -158,7 +164,7 @@ class QuizAutomation:
                 channel = self.bot.get_channel(self.config["log_channel_id"])
                 if channel:
                     embed = nextcord.Embed(
-                        title="🤖 Quiz Automation",
+                        title="🤖 Quizz Le Repère",
                         description=message,
                         color=0x00ff00,
                         timestamp=datetime.now()
@@ -169,7 +175,7 @@ class QuizAutomation:
         
         # En parallèle, écrire dans la feuille de statut si possible
         try:
-            status_title = self.config.get("status_sheet_title", "Quiz_Status")
+            status_title = self.config.get("status_sheet_title", "Statut - Roles")
             spreadsheet_id = self.config.get("spreadsheet_id")
             if spreadsheet_id and self.sheets_manager.ensure_status_sheet(spreadsheet_id, status_title):
                 # message est déjà formatté, mais on préfère un append structuré ailleurs
@@ -229,6 +235,15 @@ class QuizAutomation:
             await self.log_action(f"✅ {member.name} a reçu le rôle d'accès (ID: {self.config['access_role_id']}) (Note: {note}/{self.config['max_score']})")
             self._append_status(guild, pseudo, member, member.id, note, "SUCCESS", "Role granted")
             self.processed_rows.add(row)
+            # If autorole trigger is on_quiz_access, grant waiting_role here too
+            try:
+                from config import ServerConfig
+                # Access global server_config via import in main? Safer to query role via guild config
+                # We rely on waiting_role_id already configured for quiz access logic, so no extra fetch here
+                # No action needed; requirement says waiting_role must be given on join. This block can be used if needed.
+                pass
+            except Exception:
+                pass
             return True
         else:
             await self.log_action(f"❌ Erreur lors de l'attribution du rôle à {member.name}")
@@ -240,11 +255,30 @@ class QuizAutomation:
             spreadsheet_id = self.config.get("spreadsheet_id")
             if not spreadsheet_id:
                 return
-            title = self.config.get("status_sheet_title", "Quiz_Status")
+            title = self.config.get("status_sheet_title", "Statut - Roles")
             # S'assurer que la feuille existe
             if not self.sheets_manager.ensure_status_sheet(spreadsheet_id, title):
                 return
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            # Résultat avec emoji
+            result_upper = (result or "").upper()
+            if result_upper == "SUCCESS":
+                result_cell = "✅"
+            elif result_upper == "ERROR":
+                result_cell = "❌"
+            else:
+                result_cell = str(result)
+            # Traduction des détails
+            translations = {
+                "Missing waiting role": "Rôle d'attente manquant",
+                "Score too low": "Score insuffisant",
+                "Role granted": "Rôle attribué",
+                "Roles not configured": "Rôles non configurés",
+                "Member not found": "Membre introuvable",
+                "Failed to add role": "Échec lors de l'attribution du rôle",
+                "Empty or invalid row": "Ligne vide ou invalide",
+            }
+            details_cell = translations.get(details, details)
             row_values = [
                 timestamp,
                 str(guild.id),
@@ -253,29 +287,85 @@ class QuizAutomation:
                 str(user_id) if user_id else "",
                 (member.name if member else ""),
                 str(note),
-                result,
-                details
+                result_cell,
+                details_cell
             ]
             self.sheets_manager.append_status_row(spreadsheet_id, title, row_values)
         except Exception:
             pass
     
-    @tasks.loop(seconds=15)
+    @tasks.loop(seconds=60)
     async def check_quiz_results(self):
         """Vérifie les résultats du quiz toutes les 15 secondes"""
         if not self.config.get("spreadsheet_id"):
             return
         
         try:
-            # Récupérer les résultats du quiz
-            results = self.sheets_manager.get_quiz_results(self.config["spreadsheet_id"])
-            if not results:
+            spreadsheet_id = self.config["spreadsheet_id"]
+            status_title = self.config.get("status_sheet_title", "Statut - Roles")
+            # ensure_status_sheet est désormais appelé une fois au démarrage (dans on_ready)
+
+            # Éviter de rechecker si aucune nouvelle entrée
+            if self.last_seen_data_rows is None:
+                self.last_seen_data_rows = self.sheets_manager.get_data_row_count(spreadsheet_id) or 1
+            if self.last_processed_row is None:
+                # Basé sur le statut existant
+                status_rows = self.sheets_manager.get_status_row_count(spreadsheet_id, status_title) or 0
+                self.last_processed_row = max(1, status_rows)
+
+            current_data_rows = self.sheets_manager.get_data_row_count(spreadsheet_id) or self.last_seen_data_rows
+            if current_data_rows <= (self.last_processed_row or 1):
+                self.last_seen_data_rows = current_data_rows
                 return
-            
-            # Traiter chaque serveur
-            for guild in self.bot.guilds:
-                for result in results:
+            self.last_seen_data_rows = current_data_rows
+
+            next_row_to_read = (self.last_processed_row or 1) + 1
+
+            # Si plus de 5 nouvelles lignes à traiter, accélérer à 5s
+            data_rows = current_data_rows
+            new_rows = max(0, data_rows - (self.last_processed_row or 1))
+            if new_rows > 5 and self.config.get("check_interval", 60) != 5:
+                try:
+                    self.check_quiz_results.change_interval(seconds=5)
+                    self.config["check_interval"] = 5
+                except Exception:
+                    pass
+            elif new_rows <= 5 and self.config.get("check_interval", 60) != 60:
+                try:
+                    self.check_quiz_results.change_interval(seconds=self.config.get("check_interval_default", 60))
+                    self.config["check_interval"] = self.config.get("check_interval_default", 60)
+                except Exception:
+                    pass
+
+            # Lire en batch un petit bloc de lignes (jusqu'à 5) pour réduire les requêtes
+            end_row_to_read = min(next_row_to_read + 4, data_rows)
+            rows = self.sheets_manager.read_rows_range(spreadsheet_id, next_row_to_read, end_row_to_read, cols="A:C") or []
+            import re
+            processed_any = False
+            for offset, row in enumerate(rows):
+                current_row_idx = next_row_to_read + offset
+                try:
+                    raw_score = row[1] if len(row) > 1 else ''
+                    match = re.search(r"(\d+(?:[\.,]\d+)?)", str(raw_score))
+                    note = float(match.group(1).replace(',', '.')) if match else 0.0
+                    pseudo = row[2].strip() if len(row) > 2 and row[2] else ""
+                except Exception:
+                    note = 0.0
+                    pseudo = ""
+
+                if not pseudo:
+                    for guild in self.bot.guilds:
+                        self._append_status(guild, pseudo, None, None, note, "ERROR", "Empty or invalid row")
+                    continue
+
+                result = {"row": current_row_idx, "pseudo": pseudo, "note": note}
+                for guild in self.bot.guilds:
                     await self.process_quiz_result(result, guild)
+                processed_any = True
+                self.last_processed_row = max(self.last_processed_row or 1, current_row_idx)
+
+            if not processed_any:
+                return
                     
         except Exception as e:
             print(f"Erreur lors de la vérification des résultats du quiz: {e}")

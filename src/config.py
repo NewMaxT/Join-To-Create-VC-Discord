@@ -9,6 +9,7 @@ class ServerConfig:
         self.sticky_messages: Dict[int, Dict] = {}  # guild_id -> channel_id -> config
         self.joined_members: Dict[int, Set[int]] = {}  # guild_id -> set of member_ids
         self.member_join_dates: Dict[int, Dict[int, datetime]] = {}  # guild_id -> member_id -> join_date
+        self.autorole_log_channels: Dict[int, int] = {}  # guild_id -> log channel id
         
     def save_config(self):
         """Save configuration to file"""
@@ -16,6 +17,10 @@ class ServerConfig:
             'autorole': {
                 str(guild_id): config
                 for guild_id, config in self.autorole_config.items()
+            },
+            'autorole_logs': {
+                str(guild_id): channel_id
+                for guild_id, channel_id in self.autorole_log_channels.items()
             },
             'sticky_messages': {
                 str(guild_id): {
@@ -54,6 +59,12 @@ class ServerConfig:
                 int(guild_id): config
                 for guild_id, config in data.get('autorole', {}).items()
             }
+
+            # Load autorole logs channels
+            self.autorole_log_channels = {
+                int(guild_id): int(channel_id)
+                for guild_id, channel_id in data.get('autorole_logs', {}).items()
+            }
             
             # Load sticky messages
             self.sticky_messages = {
@@ -81,12 +92,13 @@ class ServerConfig:
         except Exception as e:
             print(f"Error loading configuration: {e}")
     
-    def set_autorole(self, guild_id: int, role_id: int, expiry_minutes: Optional[int] = None, check_rejoin: bool = False):
+    def set_autorole(self, guild_id: int, role_id: int, expiry_minutes: Optional[int] = None, check_rejoin: bool = False, trigger: str = 'on_join'):
         """Configure autorole for a guild"""
         self.autorole_config[guild_id] = {
             'role_id': role_id,
             'expiry_minutes': expiry_minutes,
-            'check_rejoin': check_rejoin
+            'check_rejoin': check_rejoin,
+            'trigger': trigger  # 'on_join' or 'on_quiz_access'
         }
         self.save_config()
     
@@ -95,6 +107,14 @@ class ServerConfig:
         if guild_id in self.autorole_config:
             del self.autorole_config[guild_id]
             self.save_config()
+
+    def set_autorole_log_channel(self, guild_id: int, channel_id: int):
+        """Set the log channel for autorole events"""
+        self.autorole_log_channels[guild_id] = channel_id
+        self.save_config()
+
+    def get_autorole_log_channel(self, guild_id: int) -> Optional[int]:
+        return self.autorole_log_channels.get(guild_id)
     
     def get_autorole(self, guild_id: int) -> Optional[Dict]:
         """Get autorole configuration for a guild"""
