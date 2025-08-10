@@ -31,64 +31,77 @@ DISCORD_TOKEN=your_bot_token_here
 python src/main.py
 ```
 
-## Commands
+## Commands (Slash)
 
-All commands require administrator permissions:
+All commands require administrator permissions.
 
 ### Voice Channel Management
 
-#### !setupvoice [name_template] [position] [creator_name] [user_limit]
+#### /setupvoice
 Creates a new voice channel creator with custom parameters
-- `name_template`: Template for new channel names (default: "Channel of {user}")
+- `template_name`: Template for new channel names (default: "Channel of {user}")
 - `position`: Where to place new channels ('before' or 'after', default: 'after')
 - `creator_name`: Name of the creator channel (default: "➕ Join to Create")
 - `user_limit`: User limit (0-99, 0 = unlimited)
 
-Examples:
-```
-!setupvoice                                    # Basic setup
-!setupvoice "Gaming with {user}"               # Custom name
-!setupvoice "Channel of {user}" before         # Create before creator
-!setupvoice "Channel of {user}" after "🎮 Create" 5 # After creator with limit
-```
-
-#### !removevoice <channel>
+#### /removevoice
 Removes a voice channel creator
-- `channel`: Mention or ID of the creator channel to remove
+- `channel`: The creator voice channel to remove
 
-Example:
-```
-!removevoice #join-to-create
-```
-
-#### !listvoice
+#### /listvoice
 Lists all voice channel creators on the server with their parameters
 
-### Configuration Commands
+### Configuration
 
-#### !config language <lang>
+#### /config language
 Set the bot's language for the server
-- `lang`: Language code ('en' for English, 'fr' for French)
+- `language`: Language code ('en', 'fr')
 
-#### !config autorole <role> [expiry_minutes] [check_rejoin]
+#### /config autorole
 Configure automatic role assignment for new members
 - `role`: The role to assign
 - `expiry_minutes`: Optional number of minutes after which the role is removed
 - `check_rejoin`: If true, role won't be given to rejoining members
 
-#### !config remove_autorole
+#### /config remove_autorole
 Disable automatic role assignment
 
-#### !config sticky <channel> <message>
+#### /config sticky
 Set a sticky message in a channel
 - `channel`: The channel to set the sticky message in
-- `message`: The content of the sticky message
+- `content`: The content of the sticky message
 
-#### !config remove_sticky <channel>
+#### /config remove_sticky
 Remove sticky message from a channel
 
-### !help
+### /help
 Display detailed bot help
+
+### Quiz Automation (Google Sheets)
+
+Automate granting an access role to users who pass a quiz tracked in Google Sheets.
+
+Requirements:
+- A Google Service Account with access to your spreadsheet (Editor for status logging)
+- Environment variables set in `.env`:
+  - `DISCORD_TOKEN=xxxxx`
+  - Option A: `GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}`
+  - Option B: `GOOGLE_SERVICE_ACCOUNT_FILE=C:\\path\\to\\service_account.json`
+
+Commands:
+- `/quiz setup` – configure the integration
+  - `spreadsheet_id`: The Google Sheet ID
+  - `waiting_role`: Discord role users must already have to be eligible (required)
+  - `access_role`: Discord role to grant when passed (required)
+  - `min_score`: Minimum score to pass (default 17)
+  - `log_channel`: Optional channel to log actions
+- `/quiz status` – view current configuration and runtime status
+- `/quiz test` – test connectivity and show sample results
+
+What it does:
+- Polls Google Sheets every 15s for new quiz results (Column B: score, Column C: Discord username)
+- If user exists on the server, has the waiting role, and score >= min_score → grants access role
+- Writes a status row on the same spreadsheet in the `Quiz_Status` tab with timestamp, guild, user, score, result, details
 
 ## Required Permissions
 

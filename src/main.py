@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from typing import Dict, Optional, Set
 from localization import Localization
 from config import ServerConfig
+from quiz_automation import QuizAutomation
 import asyncio
 from nextcord import Activity, ActivityType
 from datetime import datetime
@@ -26,6 +27,9 @@ bot = commands.Bot(intents=intents, activity=activity)
 # Initialize localization and server config
 loc = Localization()
 server_config = ServerConfig()
+
+# Initialize quiz automation
+quiz_automation = None
 
 class VoiceCreatorConfig:
     def __init__(self, channel_id: int, template_name: str, position: str = "after", user_limit: int = 0):
@@ -138,6 +142,10 @@ async def on_ready():
     # Start background tasks
     check_role_expiry.start()
     check_sticky_messages.start()
+    
+    # Initialize quiz automation
+    global quiz_automation
+    quiz_automation = QuizAutomation(bot)
     
     # Vérifier que les salons créateurs existent toujours
     invalid_configs = []
@@ -477,6 +485,130 @@ async def listvoice(interaction: Interaction):
         await interaction.response.send_message(embed=embed)
     else:
         await interaction.response.send_message(loc.get_text(interaction.guild_id, 'commands.list_none_active'))
+
+# Quiz Automation Commands
+@bot.slash_command(name="quiz", description="Configuration de l'automatisation du quiz")
+@commands.has_permissions(administrator=True)
+async def quiz(interaction: Interaction):
+    """Configuration de l'automatisation du quiz"""
+    pass
+
+@quiz.subcommand(name="setup", description="Configure l'automatisation du quiz avec Google Sheets")
+@commands.has_permissions(administrator=True)
+async def setup_quiz(
+    interaction: Interaction,
+    spreadsheet_id: str = SlashOption(description="ID de la feuille Google Sheets"),
+    waiting_role: nextcord.Role = SlashOption(description="Rôle d'attente (obligatoire)", required=True),
+    access_role: nextcord.Role = SlashOption(description="Rôle d'accès (obligatoire)", required=True),
+    min_score: int = SlashOption(description="Note minimale requise", min_value=0, max_value=20, default=17),
+    log_channel: Optional[nextcord.TextChannel] = SlashOption(description="Canal de logs (optionnel)", required=False)
+):
+    """Configure l'automatisation du quiz"""
+    try:
+        global quiz_automation
+        if not quiz_automation:
+            await interaction.response.send_message("❌ L'automatisation du quiz n'est pas initialisée", ephemeral=True)
+            return
+        
+        log_channel_id = log_channel.id if log_channel else None
+        
+        await quiz_automation.setup_quiz_automation(
+            spreadsheet_id=spreadsheet_id,
+            waiting_role=waiting_role,
+            access_role=access_role,
+            min_score=min_score,
+            log_channel_id=log_channel_id
+        )
+        
+        embed = nextcord.Embed(
+            title="✅ Configuration du Quiz",
+            description="L'automatisation du quiz a été configurée avec succès !",
+            color=0x00ff00
+        )
+        embed.add_field(name="📊 Feuille Google Sheets", value=spreadsheet_id, inline=False)
+        embed.add_field(name="⏳ Rôle d'attente", value=waiting_role.mention, inline=True)
+        embed.add_field(name="🎯 Rôle d'accès", value=access_role.mention, inline=True)
+        embed.add_field(name="📈 Note minimale", value=f"{min_score}/20", inline=True)
+        if log_channel:
+            embed.add_field(name="📝 Canal de logs", value=log_channel.mention, inline=True)
+        
+        await interaction.response.send_message(embed=embed)
+        
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Erreur lors de la configuration: {str(e)}", ephemeral=True)
+
+@quiz.subcommand(name="status", description="Affiche le statut de l'automatisation du quiz")
+@commands.has_permissions(administrator=True)
+async def quiz_status(interaction: Interaction):
+    """Affiche le statut de l'automatisation du quiz"""
+    try:
+        global quiz_automation
+        if not quiz_automation:
+            await interaction.response.send_message("❌ L'automatisation du quiz n'est pas initialisée", ephemeral=True)
+            return
+        
+        status = await quiz_automation.get_status()
+        
+        embed = nextcord.Embed(
+            title="📊 Statut de l'Automatisation du Quiz",
+            color=0x00ff00 if status["is_running"] else 0xff0000
+        )
+        embed.add_field(name="🔄 Statut", value="✅ Actif" if status["is_running"] else "❌ Inactif", inline=True)
+        embed.add_field(name="📊 Feuille Google Sheets", value=status["spreadsheet_id"], inline=True)
+        embed.add_field(name="⏱️ Intervalle de vérification", value=f"{status['check_interval']} secondes", inline=True)
+        embed.add_field(name="📈 Note minimale", value=f"{status['min_score']}/20", inline=True)
+        embed.add_field(name="⏳ Rôle d'attente", value=(f"<@&{status['waiting_role_id']}>" if status.get('waiting_role_id') else "Non défini"), inline=True)
+        embed.add_field(name="🎯 Rôle d'accès", value=(f"<@&{status['access_role_id']}>" if status.get('access_role_id') else "Non défini"), inline=True)
+        embed.add_field(name="📝 Lignes traitées", value=str(status["processed_rows"]), inline=True)
+        
+        await interaction.response.send_message(embed=embed)
+        
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Erreur lors de la récupération du statut: {str(e)}", ephemeral=True)
+
+@quiz.subcommand(name="test", description="Teste la connexion avec Google Sheets")
+@commands.has_permissions(administrator=True)
+async def test_quiz_connection(interaction: Interaction):
+    """Teste la connexion avec Google Sheets"""
+    try:
+        global quiz_automation
+        if not quiz_automation:
+            await interaction.response.send_message("❌ L'automatisation du quiz n'est pas initialisée", ephemeral=True)
+            return
+        
+        config = quiz_automation.config
+        if not config.get("spreadsheet_id"):
+            await interaction.response.send_message("❌ Aucune feuille Google Sheets configurée", ephemeral=True)
+            return
+        
+        # Test de connexion
+        results = quiz_automation.sheets_manager.get_quiz_results(config["spreadsheet_id"])
+        
+        embed = nextcord.Embed(
+            title="🔍 Test de Connexion Google Sheets",
+            description="Connexion réussie !",
+            color=0x00ff00
+        )
+        embed.add_field(name="📊 Résultats trouvés", value=str(len(results)), inline=True)
+        
+        if results:
+            # Afficher les 5 premiers résultats
+            sample_results = results[:5]
+            results_text = "\n".join([f"• {r['pseudo']}: {r['note']}/20" for r in sample_results])
+            if len(results) > 5:
+                results_text += f"\n... et {len(results) - 5} autres"
+            
+            embed.add_field(name="📝 Exemples de résultats", value=results_text, inline=False)
+        
+        await interaction.response.send_message(embed=embed)
+        
+    except Exception as e:
+        embed = nextcord.Embed(
+            title="❌ Erreur de Connexion",
+            description=f"Impossible de se connecter à Google Sheets: {str(e)}",
+            color=0xff0000
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.slash_command(name="help", description="Display bot help")
 @commands.has_permissions(administrator=True)
