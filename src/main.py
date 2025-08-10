@@ -108,6 +108,13 @@ async def on_ready():
     # Load configurations at startup
     load_configs()
     server_config.load_config()
+    # Sync slash commands to each guild for immediate availability
+    try:
+        for guild in bot.guilds:
+            await bot.sync_application_commands(guild_id=guild.id)
+        print("Slash commands synced to all guilds")
+    except Exception as e:
+        print(f"Error syncing slash commands: {e}")
     
     # Print autorole information for each guild
     for guild in bot.guilds:
