@@ -358,8 +358,8 @@ class GoogleSheetsManager:
             print(f"Erreur lors du comptage des lignes de données: {e}")
             return None
 
+    """ UNUSED (yet?) - Lit une seule ligne (row_index) sur la 1re feuille, colonnes spécifiées (ex: A:C).
     def read_single_row(self, spreadsheet_id: str, row_index: int, cols: str = "A:C") -> Optional[List[str]]:
-        """Lit une seule ligne (row_index) sur la 1re feuille, colonnes spécifiées (ex: A:C)."""
         if not self.service:
             if not self.authenticate():
                 return None
@@ -376,6 +376,7 @@ class GoogleSheetsManager:
         except Exception as e:
             print(f"Erreur lors de la lecture de la ligne {row_index}: {e}")
             return None
+    """
 
     def read_rows_range(self, spreadsheet_id: str, start_row: int, end_row: int, cols: str = "A:C") -> Optional[List[List[str]]]:
         """Lit un bloc de lignes [start_row, end_row] sur la 1re feuille (colonnes cols)."""

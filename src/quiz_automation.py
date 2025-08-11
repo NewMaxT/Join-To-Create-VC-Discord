@@ -235,13 +235,35 @@ class QuizAutomation:
             await self.log_action(f"✅ {member.name} a reçu le rôle d'accès (ID: {self.config['access_role_id']}) (Note: {note}/{self.config['max_score']})")
             self._append_status(guild, pseudo, member, member.id, note, "SUCCESS", "Role granted")
             self.processed_rows.add(row)
-            # If autorole trigger is on_quiz_access, grant waiting_role here too
+            # Si des auto-rôles sont configurés avec déclencheur on_quiz_access, les attribuer maintenant
             try:
-                from config import ServerConfig
-                # Access global server_config via import in main? Safer to query role via guild config
-                # We rely on waiting_role_id already configured for quiz access logic, so no extra fetch here
-                # No action needed; requirement says waiting_role must be given on join. This block can be used if needed.
-                pass
+                cfgs = self.server_config.get_autoroles(guild.id) if hasattr(self.server_config, 'get_autoroles') else ([])
+                if not cfgs:
+                    # fallback ancien schéma
+                    single = self.server_config.get_autorole(guild.id)
+                    cfgs = [single] if single else []
+                for cfg in cfgs:
+                    if not cfg or cfg.get('trigger') != 'on_quiz_access':
+                        continue
+                    role_id = cfg.get('role_id')
+                    autorole = guild.get_role(role_id) if role_id else None
+                    if not autorole or autorole in member.roles:
+                        continue
+                    try:
+                        await member.add_roles(autorole, reason="Autorole (on_quiz_access)")
+                        if hasattr(self.server_config, 'add_role_assignment'):
+                            self.server_config.add_role_assignment(guild.id, autorole.id, member.id)
+                        log_channel_id = self.server_config.get_autorole_log_channel(guild.id)
+                        if log_channel_id:
+                            ch = guild.get_channel(log_channel_id)
+                            if ch:
+                                await ch.send(f"✅ Rôle {autorole.mention} attribué à {member.mention} (on_quiz_access)")
+                    except Exception as e:
+                        log_channel_id = self.server_config.get_autorole_log_channel(guild.id)
+                        if log_channel_id:
+                            ch = guild.get_channel(log_channel_id)
+                            if ch:
+                                await ch.send(f"❌ Impossible d'attribuer {autorole.mention} à {member.mention} (on_quiz_access): {e}")
             except Exception:
                 pass
             return True
@@ -409,7 +431,7 @@ class QuizAutomation:
         """Retourne le statut de l'automatisation"""
         return {
             "spreadsheet_id": self.config.get("spreadsheet_id", "Non configuré"),
-            "check_interval": self.config.get("check_interval", 15),
+            "check_interval": self.config.get("check_interval", 60),
             "min_score": self.config.get("min_score", 17),
             "waiting_role_id": self.config.get("waiting_role_id"),
             "access_role_id": self.config.get("access_role_id"),

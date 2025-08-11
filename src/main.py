@@ -116,35 +116,37 @@ async def on_ready():
     except Exception as e:
         print(f"Error syncing slash commands: {e}")
     
-    # Afficher les informations d'auto-rôle pour chaque serveur
+    # Afficher les informations d'auto-rôle pour chaque serveur (multi-autoroles)
     for guild in bot.guilds:
-        config = server_config.get_autorole(guild.id)
-        if config:
-            role = guild.get_role(config['role_id'])
-            if role:
-                print(f"\nInformations d'auto-rôle pour {guild.name} :")
-                print(f"Rôle : {role.name}")
-                
-                # Obtenir les membres avec le rôle
-                members_with_role = [member for member in guild.members if role in member.roles]
-                
-                if members_with_role:
-                    print(f"Membres avec {role.name} :")
-                    for member in members_with_role:
-                        # Obtenir la date d'expiration si définie
-                        expiry_time = server_config.get_role_expiry_time(guild.id, member.id)
-                        if expiry_time:
-                            current_time = datetime.now().timestamp()
-                            remaining_time = expiry_time - current_time
-                            if remaining_time > 0:
-                                minutes = int(remaining_time / 60)
-                                print(f"  - {member.display_name} : {minutes} minutes restantes")
-                            else:
-                                print(f"  - {member.display_name} : Rôle expiré")
-                        else:
-                            print(f"  - {member.display_name} : Pas d'expiration")
-                else:
-                    print("Aucun membre ne possède actuellement ce rôle")
+        cfgs = server_config.get_autoroles(guild.id) if hasattr(server_config, 'get_autoroles') else ([server_config.get_autorole(guild.id)] if server_config.get_autorole(guild.id) else [])
+        if not cfgs:
+            continue
+        print(f"\nInformations d'auto-rôle pour {guild.name} :")
+        for cfg in cfgs:
+            if not cfg:
+                continue
+            role = guild.get_role(cfg['role_id'])
+            if not role:
+                print(f"- Rôle introuvable: <@&{cfg['role_id']}>")
+                continue
+            print(f"Rôle : {role.name} (déclencheur={cfg.get('trigger','on_join')}, expiration={'aucune' if not cfg.get('expiry_minutes') else str(cfg.get('expiry_minutes')) + ' min'})")
+            members_with_role = [m for m in guild.members if role in m.roles]
+            if members_with_role:
+                print(f"Membres avec {role.name} :")
+                for member in members_with_role:
+                    minutes_left = None
+                    if hasattr(server_config, 'get_time_left_before_role_expiry_for_role'):
+                        minutes_left = server_config.get_time_left_before_role_expiry_for_role(guild.id, member.id, role.id)
+                    else:
+                        minutes_left = server_config.get_time_left_before_role_expiry(guild.id, member.id)
+                    if minutes_left is None:
+                        print(f"  - {member.display_name} : Pas d'expiration")
+                    elif minutes_left > 0:
+                        print(f"  - {member.display_name} : {minutes_left} minutes restantes")
+                    else:
+                        print(f"  - {member.display_name} : Rôle expiré")
+            else:
+                print("Aucun membre ne possède actuellement ce rôle")
     
     # Start background tasks
     check_role_expiry.start()
@@ -193,37 +195,33 @@ async def on_ready():
 
 @tasks.loop(seconds=30)
 async def check_role_expiry():
-    """Vérifie et supprime les rôles expirés"""
-    expired_roles = server_config.get_expired_roles()
-    
-    for guild_id, member_ids in expired_roles.items():
+    """Vérifie et supprime les rôles expirés (multi-autoroles)."""
+    expired = server_config.get_expired_roles()
+    for guild_id, role_to_members in expired.items():
         guild = bot.get_guild(guild_id)
         if not guild:
             continue
-            
-        config = server_config.get_autorole(guild_id)
-        if not config:
-            continue
-            
-        role = guild.get_role(config['role_id'])
-        if not role:
-            continue
-            
-        for member_id in member_ids:
-            member = guild.get_member(member_id)
-            if member and role in member.roles:
+        for role_id, member_ids in role_to_members.items():
+            role = guild.get_role(role_id)
+            if not role:
+                continue
+            for member_id in member_ids:
+                member = guild.get_member(member_id)
+                if not member or role not in member.roles:
+                    continue
                 try:
                     await member.remove_roles(role)
                     print(f"Rôle {role.name} retiré de {member.display_name}")
-                    # Log de suppression dans le salon si configuré
                     log_channel_id = server_config.get_autorole_log_channel(guild_id)
                     if log_channel_id:
                         ch = guild.get_channel(log_channel_id)
                         if ch:
                             await ch.send(f"🗑️ Rôle {role.mention} retiré de {member.mention} (expiration)")
+                    if hasattr(server_config, 'remove_role_assignment'):
+                        server_config.remove_role_assignment(guild_id, role.id, member.id)
                 except nextcord.HTTPException:
                     print(f"Erreur lors du retrait du rôle {role.name} de {member.display_name}")
-                    pass
+                    continue
 
 @tasks.loop(seconds=5)
 async def check_sticky_messages():
@@ -276,60 +274,37 @@ async def on_member_join(member):
     """Gère l'arrivée de nouveaux membres"""
     print(f"Nouveau membre : {member.display_name}")
     guild_id = member.guild.id
-    config = server_config.get_autorole(guild_id)
-    
-    if config:
-        # If trigger is on_quiz_access, do not assign on join
-        if config.get('trigger') == 'on_quiz_access':
-            print("Autorole trigger set to on_quiz_access; skipping on join.")
-            return
-        # Check if we should skip rejoining members
-        if config['check_rejoin'] and server_config.has_member_joined_before(guild_id, member.id):
-            print(f"Ignoré: {member.display_name} a déjà rejoint auparavant")
-            return
-            
-        role = member.guild.get_role(config['role_id'])
-        if role:
-            try:
-                await member.add_roles(role)
-                server_config.add_joined_member(guild_id, member.id)
-                print(f"Rôle {role.name} ajouté à {member.display_name}")
-                # Log dans le salon d'auto-rôle si défini
-                log_channel_id = server_config.get_autorole_log_channel(guild_id)
-                if log_channel_id:
-                    ch = member.guild.get_channel(log_channel_id)
-                    if ch:
-                        await ch.send(f"✅ Rôle {role.mention} attribué à {member.mention}")
-            except nextcord.HTTPException as e:
-                # Check if it's a permission error (code 403)
-                if e.code == 50013:  # Missing Permissions error code
-                    bot_permissions = member.guild.me.guild_permissions
-                    missing_perms = []
-                    
-                    # Check common required permissions
-                    if not bot_permissions.manage_roles:
-                        missing_perms.append("Manage Roles")
-                    if not bot_permissions.view_audit_log:
-                        missing_perms.append("View Audit Log")
-                    
-                    # Check role hierarchy
-                    if member.guild.me.top_role <= role:
-                        missing_perms.append(f"Role Hierarchy (Bot's highest role must be above {role.name})")
-                    
-                    print(f"Permissions manquantes : {', '.join(missing_perms)}")
-                    print(f"Détails de l'erreur : {str(e)}")
-                else:
-                    print(f"Erreur lors de l'ajout du rôle {role.name} à {member.display_name} (hors permissions) : {str(e)}")
-                # Log erreur
-                log_channel_id = server_config.get_autorole_log_channel(guild_id)
-                if log_channel_id:
-                    ch = member.guild.get_channel(log_channel_id)
-                    if ch:
-                        await ch.send(f"❌ Impossible d'attribuer {role.mention} à {member.mention} : {str(e)}")
-        else:
-            print(f"Mauvaise configuration de rôle pour le serveur {guild_id}")
-    else:
+    cfgs = server_config.get_autoroles(guild_id) if hasattr(server_config, 'get_autoroles') else ([server_config.get_autorole(guild_id)] if server_config.get_autorole(guild_id) else [])
+    if not cfgs:
         print(f"Aucune configuration d'auto-rôle pour le serveur {guild_id}")
+        return
+    for cfg in cfgs:
+        if not cfg:
+            continue
+        if cfg.get('trigger') == 'on_quiz_access':
+            continue
+        if cfg.get('check_rejoin') and server_config.has_member_joined_before(guild_id, member.id):
+            print(f"Ignoré: {member.display_name} a déjà rejoint auparavant")
+            continue
+        role = member.guild.get_role(cfg['role_id'])
+        if not role:
+            continue
+        try:
+            await member.add_roles(role)
+            if hasattr(server_config, 'add_role_assignment'):
+                server_config.add_role_assignment(guild_id, role.id, member.id)
+            print(f"Rôle {role.name} ajouté à {member.display_name}")
+            log_channel_id = server_config.get_autorole_log_channel(guild_id)
+            if log_channel_id:
+                ch = member.guild.get_channel(log_channel_id)
+                if ch:
+                    await ch.send(f"✅ Rôle {role.mention} attribué à {member.mention}")
+        except Exception as e:
+            log_channel_id = server_config.get_autorole_log_channel(guild_id)
+            if log_channel_id:
+                ch = member.guild.get_channel(log_channel_id)
+                if ch:
+                    await ch.send(f"❌ Impossible d'attribuer {role.mention} à {member.mention} : {e}")
 
 @bot.slash_command(name="config", description="Groupe de commandes de configuration")
 @commands.has_permissions(administrator=True)
@@ -373,6 +348,59 @@ async def autorole_list_expiry(interaction: Interaction):
     more = "" if len(lines) <= 25 else f"\n... et {len(lines) - 25} autres"
     await interaction.response.send_message(f"Membres avec {role.mention} :\n{text}{more}", ephemeral=True)
 
+@autorole_cmd.subcommand(name="list_no_expiry", description="Lister les membres qui ont un auto-rôle sans expiration")
+@commands.has_permissions(administrator=True)
+async def autorole_list_no_expiry(interaction: Interaction):
+    guild = interaction.guild
+    cfgs = server_config.get_autoroles(guild.id) if hasattr(server_config, 'get_autoroles') else ([server_config.get_autorole(guild.id)] if server_config.get_autorole(guild.id) else [])
+    if not cfgs:
+        await interaction.response.send_message("Aucun auto-rôle configuré pour ce serveur.", ephemeral=True)
+        return
+    chunks = []
+    found_any = False
+    for cfg in cfgs:
+        if not cfg or cfg.get('expiry_minutes'):
+            continue
+        role = guild.get_role(cfg['role_id'])
+        if not role:
+            continue
+        members_with_role = [m for m in guild.members if role in m.roles]
+        found_any = found_any or bool(members_with_role)
+        if not members_with_role:
+            chunks.append(f"Rôle {role.mention} : aucun membre")
+            continue
+        lines = [f"• {m.display_name}" for m in members_with_role[:25]]
+        more = "" if len(members_with_role) <= 25 else f"\n... et {len(members_with_role) - 25} autres"
+        chunks.append(f"Rôle {role.mention} (sans expiration) :\n" + "\n".join(lines) + more)
+    if not chunks:
+        await interaction.response.send_message("Aucun auto-rôle sans expiration configuré.", ephemeral=True)
+        return
+    await interaction.response.send_message("\n\n".join(chunks), ephemeral=True)
+
+@autorole_cmd.subcommand(name="list_configs", description="Afficher la configuration active des auto-rôles")
+@commands.has_permissions(administrator=True)
+async def autorole_list_configs(interaction: Interaction):
+    guild = interaction.guild
+    cfgs = server_config.get_autoroles(guild.id) if hasattr(server_config, 'get_autoroles') else ([server_config.get_autorole(guild.id)] if server_config.get_autorole(guild.id) else [])
+    if not cfgs:
+        await interaction.response.send_message("Aucun auto-rôle configuré pour ce serveur.", ephemeral=True)
+        return
+    embed = nextcord.Embed(title="Configuration des auto-rôles", color=0x00ff00)
+    for cfg in cfgs:
+        if not cfg:
+            continue
+        role = guild.get_role(cfg['role_id'])
+        role_name = role.mention if role else f"<@&{cfg['role_id']}> (introuvable)"
+        trigger = cfg.get('trigger', 'on_join')
+        expiry = cfg.get('expiry_minutes')
+        rejoin = cfg.get('check_rejoin', False)
+        embed.add_field(
+            name=role_name,
+            value=(f"déclencheur: {trigger}\n" + (f"expiration: {expiry} min\n" if expiry else "expiration: aucune\n") + f"ignorer si déjà revenu: {'oui' if rejoin else 'non'}"),
+            inline=False
+        )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 @config.subcommand(name="language", description="Définir la langue du bot pour ce serveur")
 @commands.has_permissions(administrator=True)
 async def set_language(
@@ -401,10 +429,13 @@ async def set_autorole(
         await interaction.response.send_message("Expiry time must be greater than 0 minutes!")
         return
         
-    server_config.set_autorole(interaction.guild_id, role.id, expiry_minutes, check_rejoin, trigger)
-    
-    # Send confirmation message
-    await interaction.response.send_message(loc.get_text(interaction.guild_id, 'config.autorole.set_success', role=role.mention) + f" (déclencheur={trigger})")
+    # Support multi-autoroles when available
+    if hasattr(server_config, 'add_autorole'):
+        server_config.add_autorole(interaction.guild_id, role.id, expiry_minutes, check_rejoin, trigger)
+        await interaction.response.send_message(f"Auto-rôle enregistré: {role.mention} (déclencheur={trigger}{f', expire={expiry_minutes} min' if expiry_minutes else ''})")
+    else:
+        server_config.set_autorole(interaction.guild_id, role.id, expiry_minutes, check_rejoin, trigger)
+        await interaction.response.send_message(loc.get_text(interaction.guild_id, 'config.autorole.set_success', role=role.mention) + f" (déclencheur={trigger})")
     
     if expiry_minutes:
         await interaction.followup.send(loc.get_text(interaction.guild_id, 'config.autorole.expiry_set', minutes=expiry_minutes))
@@ -708,57 +739,48 @@ async def test_quiz_connection(interaction: Interaction):
 async def cmds_help(interaction: Interaction):
     """Affiche l'aide du bot (Admin uniquement)"""
     embed = nextcord.Embed(
-        title=loc.get_text(interaction.guild_id, 'help.title'),
-        description=loc.get_text(interaction.guild_id, 'help.description'),
+        title="Aide du bot",
+        description="Commandes slash disponibles (administrateur)",
         color=0x00ff00
     )
 
-    # setupvoice command
+    # Gestion des salons vocaux
     embed.add_field(
-        name=loc.get_text(interaction.guild_id, 'help.setup_title'),
-        value=loc.get_text(interaction.guild_id, 'help.setup_desc'),
+        name="Salons vocaux",
+        value=(
+            "`/setupvoice` — créer un créateur de salon vocal\n"
+            "`/removevoice` — supprimer un créateur de salon vocal\n"
+            "`/listvoice` — lister les créateurs de salons vocaux"
+        ),
         inline=False
     )
 
-    # removevoice command
+    # Configuration
     embed.add_field(
-        name=loc.get_text(interaction.guild_id, 'help.remove_title'),
-        value=loc.get_text(interaction.guild_id, 'help.remove_desc'),
+        name="Configuration",
+        value=(
+            "`/config language` — définir la langue\n"
+            "`/config autorole` — ajouter/mettre à jour un auto-rôle (on_join/on_quiz_access, expiration facultative)\n"
+            "`/config remove_autorole` — supprimer un auto-rôle ou tous\n"
+            "`/config autorole_logs` — définir le salon de logs auto-rôle (attribution/expiration)\n"
+            "`/config sticky` — définir un message épinglé\n"
+            "`/config remove_sticky` — supprimer un message épinglé"
+        ),
         inline=False
     )
 
-    # listvoice command
+    # Autorole (outils)
     embed.add_field(
-        name=loc.get_text(interaction.guild_id, 'help.list_title'),
-        value=loc.get_text(interaction.guild_id, 'help.list_desc'),
+        name="Autorole (outils)",
+        value=(
+            "`/autorole list_configs` — affiche la configuration active des auto-rôles\n"
+            "`/autorole list_expiry` — liste les membres avec temps restant avant expiration\n"
+            "`/autorole list_no_expiry` — liste les membres ayant un auto-rôle sans expiration"
+        ),
         inline=False
     )
 
-    # Commandes de configuration
-    embed.add_field(
-        name=loc.get_text(interaction.guild_id, 'help.config_title'),
-        value=loc.get_text(interaction.guild_id, 'help.config_desc'),
-        inline=False
-    )
-
-    # help command
-    embed.add_field(
-        name=loc.get_text(interaction.guild_id, 'help.help_title'),
-        value=loc.get_text(interaction.guild_id, 'help.help_desc'),
-        inline=False
-    )
-
-    # Important notes
-    embed.add_field(
-        name=loc.get_text(interaction.guild_id, 'help.notes_title'),
-        value=loc.get_text(interaction.guild_id, 'help.notes_desc'),
-        inline=False
-    )
-
-    # Footer with version
-    embed.set_footer(text=loc.get_text(interaction.guild_id, 'help.footer'))
-
-    # Ajouter info Quiz & MassGive
+    # Quiz
     embed.add_field(
         name="Quiz",
         value=(
@@ -770,14 +792,13 @@ async def cmds_help(interaction: Interaction):
         ),
         inline=False
     )
+    # MassGive
     embed.add_field(
         name="MassGive",
         value=(
             "`/massgive target_role:@Role everyone:true` — attribuer à tout le serveur\n"
             "`/massgive target_role:@Role filter_role:@RoleFiltre` — attribuer à ceux qui ont RoleFiltre\n"
-            "`/config autorole_logs channel:#logs` — définir le salon de logs auto-rôle\n"
-            "`/config autorole ...` — configure l'auto-rôle (délais d'expiration visibles dans la console et via la commande ci-dessous)\n"
-            "`/autorole list_expiry` — liste les membres avec temps restant avant expiration"
+            "(Assurez-vous que le bot peut gérer les rôles et que son rôle est au-dessus du rôle cible)"
         ),
         inline=False
     )
@@ -914,10 +935,8 @@ async def massgive(
             failed += 1
         except Exception:
             failed += 1
-
-        if idx % 10 == 0:
-            # Mise à jour de progression toutes les 10 opérations
-            await asyncio.sleep(0.5)
+        # Pause courte entre chaque attribution pour lisser la charge
+        await asyncio.sleep(0.1)
 
     embed = nextcord.Embed(
         title="✅ Attribution en masse terminée",
