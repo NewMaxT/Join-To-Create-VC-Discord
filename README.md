@@ -31,64 +31,113 @@ DISCORD_TOKEN=your_bot_token_here
 python src/main.py
 ```
 
-## Commands
+## Commands (Slash)
 
-All commands require administrator permissions:
+All commands require administrator permissions.
 
 ### Voice Channel Management
 
-#### !setupvoice [name_template] [position] [creator_name] [user_limit]
+#### /setupvoice
 Creates a new voice channel creator with custom parameters
-- `name_template`: Template for new channel names (default: "Channel of {user}")
+- `template_name`: Template for new channel names (default: "Channel of {user}")
 - `position`: Where to place new channels ('before' or 'after', default: 'after')
 - `creator_name`: Name of the creator channel (default: "➕ Join to Create")
 - `user_limit`: User limit (0-99, 0 = unlimited)
 
-Examples:
-```
-!setupvoice                                    # Basic setup
-!setupvoice "Gaming with {user}"               # Custom name
-!setupvoice "Channel of {user}" before         # Create before creator
-!setupvoice "Channel of {user}" after "🎮 Create" 5 # After creator with limit
-```
-
-#### !removevoice <channel>
+#### /removevoice
 Removes a voice channel creator
-- `channel`: Mention or ID of the creator channel to remove
+- `channel`: The creator voice channel to remove
 
-Example:
-```
-!removevoice #join-to-create
-```
-
-#### !listvoice
+#### /listvoice
 Lists all voice channel creators on the server with their parameters
 
-### Configuration Commands
+### Configuration
 
-#### !config language <lang>
+#### /config language
 Set the bot's language for the server
-- `lang`: Language code ('en' for English, 'fr' for French)
+- `language`: Language code ('en', 'fr')
 
-#### !config autorole <role> [expiry_minutes] [check_rejoin]
+#### /config autorole
 Configure automatic role assignment for new members
 - `role`: The role to assign
 - `expiry_minutes`: Optional number of minutes after which the role is removed
 - `check_rejoin`: If true, role won't be given to rejoining members
 
-#### !config remove_autorole
+#### /config remove_autorole
 Disable automatic role assignment
 
-#### !config sticky <channel> <message>
+#### /config sticky
 Set a sticky message in a channel
 - `channel`: The channel to set the sticky message in
-- `message`: The content of the sticky message
+- `content`: The content of the sticky message
 
-#### !config remove_sticky <channel>
+#### /config remove_sticky
 Remove sticky message from a channel
 
-### !help
+### /help
 Display detailed bot help
+
+### Quiz Automation (Google Sheets)
+
+Automate granting an access role to users who pass a quiz tracked in Google Sheets.
+
+Requirements:
+- A Google Service Account with access to your spreadsheet (Editor for status logging)
+- Environment variables set in `.env`:
+  - `DISCORD_TOKEN=xxxxx`
+  - Option A: `GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}`
+  - Option B: `GOOGLE_SERVICE_ACCOUNT_FILE=C:\\path\\to\\service_account.json`
+
+Commands:
+- `/quiz setup` – configure the integration
+  - `spreadsheet_id`: The Google Sheet ID
+  - `waiting_role`: Discord role users must already have to be eligible (required)
+  - `access_role`: Discord role to grant when passed (required)
+  - `min_score`: Minimum score to pass (default 17)
+  - `log_channel`: Optional channel to log actions
+- `/quiz status` – view current configuration and runtime status
+- `/quiz test` – test connectivity and show sample results
+
+What it does:
+- Polls Google Sheets for new quiz results (Column B: score, Column C: Discord username). Interval is 60s by default (configurable via `/quiz setup`), and auto-reduces to 5s when more than 5 new lines need processing.
+- If user exists on the server, has the waiting role, and score >= min_score → grants access role
+- Writes a status row on the same spreadsheet in the `Statut - Roles` tab with timestamp, guild, user, score, result (✅/❌), details (FR). The tab is auto-formatted as a dynamic table (frozen header, filter, auto-width, bold header, named range `Statut_Roles`).
+
+Google API rate limit:
+- Hard limit: 1 request/second. The bot enforces this with a throttle.
+- You can override the minimal interval via `.env`:
+  ```
+  GOOGLE_API_MIN_INTERVAL=1.0
+  ```
+  Keep it at 1.0 or higher. Do not set below 1.0.
+
+How to get the Service Account JSON:
+- Go to Google Cloud Console → APIs & Services → Enable “Google Sheets API”
+- Create Credentials → Service account → finish
+- Open the service account → Keys → Add key → Create new key → JSON → Download
+- Copy the service account email (ends with `@<project-id>.iam.gserviceaccount.com`)
+- Share your Google Sheet with that email as Editor (needed for the `Statut - Roles` tab)
+
+### Mass role assignment
+
+Assign a role to many members at once:
+- `/massgive target_role:@Role everyone:true` – give the role to everyone on the server
+- `/massgive target_role:@Role filter_role:@AnotherRole` – give the role only to members who have AnotherRole
+
+Notes:
+- Bot must have Manage Roles and its highest role must be above the target role.
+
+Configure the bot with the JSON (choose one):
+- Option A (.env inline JSON):
+  ```
+  DISCORD_TOKEN=xxxxx
+  GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"...@...iam.gserviceaccount.com","client_id":"...","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_x509_cert_url":"..."}
+  ```
+- Option B (file path in .env):
+  ```
+  DISCORD_TOKEN=xxxxx
+  GOOGLE_SERVICE_ACCOUNT_FILE=C:\\path\\to\\service_account.json
+  ```
 
 ## Required Permissions
 

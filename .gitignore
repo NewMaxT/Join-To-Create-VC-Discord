@@ -56,4 +56,9 @@ desktop.ini
 # Discord bot specific
 token.txt
 config.yaml
-config.yml 
+config.yml
+
+# Google Sheets API credentials and tokens
+credentials.json
+token.pickle
+quiz_config.json
